@@ -35,3 +35,24 @@ index 4e135d2..ff6665a 100644
      {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
      {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
      {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
+diff --git a/lib/imgui.cpp b/lib/imgui.cpp
+index 07a0ec1..908adf5 100644
+--- a/lib/imgui.cpp
++++ b/lib/imgui.cpp
+@@ -236,9 +236,16 @@ void render(const wgpu::RenderPassEncoder& pass, const DrawData& drawData) noexc
+     ImGui_ImplSDLRenderer3_RenderDrawData(data, renderer);
+     SDL_RenderPresent(renderer);
+   } else {
++#if defined(__PROSPERO__)
++    // PS5 port: no debug group. Some builds of the title died here at the first frame with
++    // anything to draw (a check in Dawn's AddNullTerminatedString, under PushDebugGroup); the
++    // group only labels the pass for a GPU debugger, which the console has none of.
++    ImGui_ImplWGPU_RenderDrawData(data, pass.Get());
++#else
+     pass.PushDebugGroup("Aurora: Dear Imgui");
+     ImGui_ImplWGPU_RenderDrawData(data, pass.Get());
+     pass.PopDebugGroup();
++#endif
+   }
+ }
+ 

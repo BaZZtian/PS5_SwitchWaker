@@ -41,6 +41,7 @@ Controls: left stick to move, right stick for the camera (the C stick), Cross A,
 Square B, Circle X, Triangle Y, R1 Z, L2 L, R2 R, Options START. The buttons are
 mapped by position, where the GameCube pad has them around A, so the HUD's
 symbols sit where the buttons do on the DualSense: the sword is on Square.
+The symbol of an empty item slot sits in the middle of its bubble.
 
 ## Install
 
@@ -117,8 +118,9 @@ to tell apart, and the PNG one is not suitable.
    `HUD` and so on) to the console, into
    `/data/homebrew/PPSA99309/user/hd_textures/`. Create that folder if it is
    not there. Over FTP the 5,700 files take about ten minutes.
-3. Start the game, open the options menu (the touch pad's click) and set
-   Graphics > "HD textures" to On. It stays on for later starts.
+3. Start the game. A pack found in that folder is used from the start; the
+   options menu (the touch pad's click) has Graphics > "HD textures" to turn it
+   off and on, and remembers what you chose.
 
 With no pack in that folder the option does nothing.
 

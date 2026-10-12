@@ -1,3 +1,60 @@
+diff --git a/game/src/d/d_meter.cpp b/game/src/d/d_meter.cpp
+index 05ecca5..292ce89 100644
+--- a/game/src/d/d_meter.cpp
++++ b/game/src/d/d_meter.cpp
+@@ -1177,6 +1177,31 @@ void dMeter_parentPaneTrans(fopMsgM_pane_class* pane, f32 scale) {
+     j2dPane->rotate(pane->mSize.x / 2.0f, pane->mSize.y / 2.0f, ROTATE_Z, j2dPane->getRotate());
+ }
+ 
++#if TARGET_PC
++// PS5 port: the X and Y buttons' symbols. The layout puts each at the inner corner of its bubble,
++// clear of the item's picture; with no item in the slot the symbol sits off-centre in an empty
++// bubble, which shows with the DualSense's symbols. An empty slot's symbol moves to the bubble's
++// middle; with an item it stays where the layout has it. (COS_HUD_CENTRE_EMPTY=1 elsewhere.)
++static fopMsgM_f2d_class sPs5SymbolOrig[2];
++
++static void ps5CentreEmptySymbols(sub_meter_class* i_Meter) {
++#if defined(__PROSPERO__)
++    static const bool on = true;
++#else
++    static const bool on = getenv("COS_HUD_CENTRE_EMPTY") != NULL;
++#endif
++    if (!on) {
++        return;
++    }
++    static const f32 offset[2][2] = {{10.0f, -2.0f}, {-4.0f, -11.0f}}; // X (Circle), Y (Triangle)
++    for (int i = 0; i < 2; i++) {
++        const bool empty = dComIfGp_getSelectItem(i) == dItemNo_NONE_e;
++        i_Meter->field_0x2550[i].mPosCenterOrig.x = sPs5SymbolOrig[i].x + (empty ? offset[i][0] : 0.0f);
++        i_Meter->field_0x2550[i].mPosCenterOrig.y = sPs5SymbolOrig[i].y + (empty ? offset[i][1] : 0.0f);
++    }
++}
++#endif
++
+ /* 801F08DC-801F09D8       .text dMeter_childPaneTrans__FP18fopMsgM_pane_classP18fopMsgM_pane_classf */
+ void dMeter_childPaneTrans(fopMsgM_pane_class* pane, fopMsgM_pane_class* parent, f32 scale) {
+     f32 x = pane->mPosCenterOrig.x - parent->mPosCenterOrig.x;
+@@ -3484,6 +3509,9 @@ void dMeter_xyTrans(sub_meter_class* i_Meter) {
+         fopMsgM_paneTrans(&i_Meter->field_0x2470[i], x, dVar8);
+     }
+     fopMsgM_paneTrans(&i_Meter->field_0x2518, x, dVar8);
++#if TARGET_PC
++    ps5CentreEmptySymbols(i_Meter);
++#endif
+     for (s32 i = 0; i < 2; i++) {
+         fopMsgM_paneTrans(&i_Meter->field_0x2550[i], x, dVar8);
+         fopMsgM_paneTrans(&i_Meter->field_0x25c0[i], x, dVar8);
+@@ -7433,6 +7461,10 @@ void dMeter_screenDataSet(sub_meter_class* i_Meter) {
+     fopMsgM_setPaneData(&i_Meter->field_0x2550[0], sMainParts1, 'bax1');
+     fopMsgM_setPaneData(&i_Meter->field_0x25c0[0], sMainParts1, 'b001');
+     fopMsgM_setPaneData(&i_Meter->field_0x2630[0], sMainParts1, 'ba01');
++#if TARGET_PC
++    sPs5SymbolOrig[0] = i_Meter->field_0x2550[0].mPosCenterOrig;
++    sPs5SymbolOrig[1] = i_Meter->field_0x2550[1].mPosCenterOrig;
++#endif
+     fopMsgM_setPaneData(&i_Meter->field_0x1da8[0], sMainParts1, 'baa');
+     fopMsgM_setPaneData(&i_Meter->field_0x1e18[0], sMainParts1, 'bawe');
+     fopMsgM_setPaneData(&i_Meter->field_0x26a0, sMainParts1, 'bar1');
 diff --git a/native/src/pc/features/pc_menu.cpp b/native/src/pc/features/pc_menu.cpp
 index 3a26b60..fb9c5f0 100644
 --- a/native/src/pc/features/pc_menu.cpp
@@ -269,7 +326,7 @@ index 8d3e3b5..4ee3265 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index e21ec1b..52e75d9 100644
+index e21ec1b..fe8251c 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
 @@ -15,6 +15,10 @@
@@ -283,7 +340,7 @@ index e21ec1b..52e75d9 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +132,69 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +132,81 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -347,13 +404,25 @@ index e21ec1b..52e75d9 100644
 +    ps5Default("COS_FB_SCALE", "0");
 +    // the render pipelines of the bundled list are compiled while the game starts
 +    ps5Default("COS_PRECOMPILE", "boot");
++    // a texture pack the player has copied in (user/hd_textures) is used unless the options menu
++    // has said otherwise
++    if (DIR* d = opendir("/app0/user/hd_textures")) {
++        bool any = false;
++        while (const dirent* e = readdir(d)) {
++            any = any || e->d_name[0] != '.';
++        }
++        closedir(d);
++        if (any) {
++            ps5Default("COS_HD_TEXTURES", "1");
++        }
++    }
 +}
 +#endif
 +
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +207,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +219,14 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -368,7 +437,7 @@ index e21ec1b..52e75d9 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -257,6 +326,10 @@ int pc_env_audio(void) {
+@@ -257,6 +338,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -379,7 +448,7 @@ index e21ec1b..52e75d9 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -281,6 +354,13 @@ void pc_exit(int code) {
+@@ -281,6 +366,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);
