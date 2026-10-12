@@ -26,14 +26,14 @@ first one in its folder, then on a USB drive).
 
 | Area | State |
 | --- | --- |
-| Disc | Found in the title's folder; a `.iso` was used on the console, `.ciso` only on the Mac build. A missing or wrong disc exits with a line in klog and no message on screen |
+| Disc | Found in the title's folder; a `.iso` was used on the console, `.ciso` only on the Mac build. A missing or wrong disc closes the title with a console notification (the close is seen working; the notification's text has not been read on a television yet) |
 | Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
 | 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
 | Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
 | Button prompts | The HUD shows Cross, Circle, Square, Triangle, R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, Kenney's CC0 Input Prompts). Not done: the button pictures inside message text (they are in the game's font), and the options menu's own hints, which still name the GameCube's buttons |
 | Options menu | The touch pad's click opens it |
 | Saves, settings | `/data/homebrew/PPSA99309/user/`; the first start asks to create a save file, as the game does on an empty memory card |
-| HD textures | SwitchWaker's replacement of textures from a Dolphin pack the player supplies (`user/hd_textures`, off by default) is built in; not yet seen working on the console |
+| HD textures | A Dolphin texture pack the player supplies replaces the game's textures (off by default; see HD textures below). Seen working on the console with Hypatia's pack at Outset |
 | Sound | Not checked by ear in this log |
 | DevLoop | `devloop-shot` and `devloop-quit` in the title's folder (registered as `windwaker-gc`); the shot answers once the game's loop runs |
 | Art | The icon and background are the port's own, cel-shaded, made with an image generator (`ps5/art/`) |
@@ -42,6 +42,97 @@ Controls: left stick to move, right stick for the camera (the C stick), Cross A,
 Circle B, Square X, Triangle Y, R1 Z, L2 L, R2 R, Options START. The mapping is
 by name, as PS5_Dusklight's, which on the HUD puts Square to the right of Cross
 and Circle to its lower left, not where they sit on the pad.
+
+## Install
+
+There is no release yet: build the title's folder yourself (see Build). It
+contains no game data.
+
+**What the console needs**
+
+- A PS5 that runs homebrew, with etaHEN (or an equivalent) loaded.
+- ShadowMountPlus, which shows the folders in `/data/homebrew` as titles on the
+  home screen.
+- An FTP server on the console to copy files with (port 2121 here).
+
+**Steps**
+
+1. Build: the result is the folder `dist/PPSA99309/`.
+2. Copy that whole folder to the console as `/data/homebrew/PPSA99309/`, so that
+   you have:
+
+   ```text
+   /data/homebrew/PPSA99309/eboot.bin
+   /data/homebrew/PPSA99309/initial_pipeline_cache.db
+   /data/homebrew/PPSA99309/sce_sys/      (param.json, icon0.png, pic0.dds, pic1.dds)
+   /data/homebrew/PPSA99309/sce_module/libc.prx
+   /data/homebrew/PPSA99309/res/          (button symbols and shader caches)
+   /data/homebrew/PPSA99309/licenses/
+   ```
+
+   Copy `sce_sys/icon0.png` with the first upload: ShadowMountPlus will not
+   register a title without its icon.
+3. Copy your disc image into the same folder, under any name ending in `.iso`,
+   `.gcm` or `.ciso`:
+
+   ```text
+   /data/homebrew/PPSA99309/your-disc.iso
+   ```
+
+   It has to be there or on a USB drive, not elsewhere in `/data`: a title can
+   only see its own folder. The game takes the first image it finds.
+4. Wait a few seconds for "Wind Waker" to appear on the home screen, and start
+   it. The first start asks to create a save file.
+
+With no disc image, or one that is not the supported disc, the title closes and
+the console shows a notification that says why.
+
+Saves and settings are written to `/data/homebrew/PPSA99309/user/`. Copying a new
+build over the folder leaves them, and the disc image, alone.
+
+**The disc image.** Dump your own copy of the game
+([how](https://wiki.dolphin-emu.org/index.php?title=Ripping_Games)). Only the USA
+disc, `GZLE01` revision 0, is supported. If your dump is RVZ or another compressed
+format, convert it to `.iso` with [Dolphin](https://dolphin-emu.org/) first.
+
+## HD textures (optional)
+
+The game's textures are the GameCube's, made for a 480-line picture. A texture
+pack replaces them with redrawn, larger ones as the game draws them; nothing in
+the game itself changes, and the option can be turned on and off while playing.
+The port reads packs made for the [Dolphin](https://dolphin-emu.org/) emulator
+for the USA disc (`GZLE01`). No pack comes with the title: each is its author's
+own work, and you download it yourself.
+
+The pack tried here is **Hypatia's "WWHD Mod" v2.0001a**, about 5,700 textures
+covering most of the game. Its downloads are in the first post of
+[its thread on the Dolphin forum](https://forums.dolphin-emu.org/thread-55004.html).
+Take **"PC DDS Half Size"** (a `.7z` of 850 MB, 2.5 GB unpacked): the port reads
+it as it is. The full-size one is four times larger for a picture that is hard
+to tell apart, and the PNG one is not suitable.
+
+1. Unpack the `.7z` on a computer. Inside is a folder `GZL`.
+2. Copy what is **inside** `GZL` (the folders `Characters`, `Environments`,
+   `HUD` and so on) to the console, into
+   `/data/homebrew/PPSA99309/user/hd_textures/`. Create that folder if it is
+   not there. Over FTP the 5,700 files take about ten minutes.
+3. Start the game, open the options menu (the touch pad's click) and set
+   Graphics > "HD textures" to On. It stays on for later starts.
+
+With no pack in that folder the option does nothing.
+
+Seen on the console on 2026-10-12 with that pack: Outset at 3840x2160 and 60
+images a second with the textures replaced. Not played further than that.
+
+**Button symbols with a pack.** The pack replaces the HUD's buttons as well, with
+its own GameCube ones, so the DualSense's symbols this port draws are lost while
+it is on. The pack has PlayStation buttons of its own
+(`-[Optional Textures]-/[HUD] Controller Buttons - Playstation`: copy its `HUD`
+folder over the one in `hd_textures`), but they label the buttons by position
+(Square for B, Circle for X), which is not this port's mapping (Circle is B,
+Square is X): with them the HUD shows the wrong symbol for those two.
+
+## Development
 
 To try a change without the console:
 
