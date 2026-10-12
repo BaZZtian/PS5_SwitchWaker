@@ -29,7 +29,7 @@ first one in its folder, then on a USB drive).
 | Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
 | 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
 | Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
-| Button prompts | The HUD shows Cross, Circle, Square, Triangle, R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, Kenney's CC0 Input Prompts). Not done: the button pictures inside message text (they are in the game's font), and the options menu's own hints, which still name the GameCube's buttons |
+| Button prompts | The HUD shows Cross (A), Square (B), Circle (X), Triangle (Y), R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, Kenney's CC0 Input Prompts). Not done: the button pictures inside message text (they are in the game's font), and the options menu's own hints, which still name the GameCube's buttons |
 | Options menu | The touch pad's click opens it |
 | Saves, settings | `/data/homebrew/PPSA99309/user/`; the first start asks to create a save file, as the game does on an empty memory card |
 | HD textures | A Dolphin texture pack the player supplies replaces the game's textures (off by default; see HD textures below). Seen working on the console with Hypatia's pack at Outset |
@@ -38,9 +38,9 @@ first one in its folder, then on a USB drive).
 | Art | The icon and background are the port's own, cel-shaded, made with an image generator (`ps5/art/`) |
 
 Controls: left stick to move, right stick for the camera (the C stick), Cross A,
-Circle B, Square X, Triangle Y, R1 Z, L2 L, R2 R, Options START. The mapping is
-by name, as PS5_Dusklight's, which on the HUD puts Square to the right of Cross
-and Circle to its lower left, not where they sit on the pad.
+Square B, Circle X, Triangle Y, R1 Z, L2 L, R2 R, Options START. The buttons are
+mapped by position, where the GameCube pad has them around A, so the HUD's
+symbols sit where the buttons do on the DualSense: the sword is on Square.
 
 ## Install
 
@@ -127,11 +127,10 @@ images a second with the textures replaced. Not played further than that.
 
 **Button symbols with a pack.** The pack replaces the HUD's buttons as well, with
 its own GameCube ones, so the DualSense's symbols this port draws are lost while
-it is on. The pack has PlayStation buttons of its own
-(`-[Optional Textures]-/[HUD] Controller Buttons - Playstation`: copy its `HUD`
-folder over the one in `hd_textures`), but they label the buttons by position
-(Square for B, Circle for X), which is not this port's mapping (Circle is B,
-Square is X): with them the HUD shows the wrong symbol for those two.
+it is on. To have PlayStation buttons with the pack, also copy the `HUD` folder
+from its `-[Optional Textures]-/[HUD] Controller Buttons - Playstation` over
+the `HUD` folder in `hd_textures`, replacing files: those label the buttons by
+position, as this port maps them.
 
 ## Development
 

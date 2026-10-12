@@ -7,8 +7,8 @@ The game draws a button as a coloured shape with a white letter over it, each le
 texture of its own. Aurora replaces a texture by a file named after it (Dolphin's scheme:
 tex1_<width>x<height>_<hash of its texels>[_<hash of its palette>]_<format>.png), so each
 picture here carries the name of what it stands in for and nothing of it: a cross for A, a
-circle for B, a square for X and a triangle for Y, as the default mapping has them (A south,
-B east, X west, Y north), "R2" for R, and for Z, whose button is one picture with its letter,
+square for B, a circle for X and a triangle for Y, as the port's mapping has them (A south,
+B west, X east, Y north: where the GameCube pad has them around A), "R2" for R, and for Z, whose button is one picture with its letter,
 a button drawn here that says "R1". The C stick's picture (a yellow knob beside an eye) becomes
 Kenney's right stick beside an eye drawn here. The A button's green face becomes a blue one, drawn here:
 a cross belongs on blue. The names are the GameCube USA disc's (GZLE01), read from a texture
@@ -128,8 +128,8 @@ def stick_and_eye(name, w, h):
 
 
 glyph("tex1_16x16_f2ecddd16b5f554a_0", 16, 16, "playstation_button_cross_outline")     # A
-glyph("tex1_16x16_0bbde935468955d4_0", 16, 16, "playstation_button_circle_outline")    # B
-glyph("tex1_16x16_a954694dda754d44_0", 16, 16, "playstation_button_square_outline")    # X
+glyph("tex1_16x16_0bbde935468955d4_0", 16, 16, "playstation_button_square_outline")    # B
+glyph("tex1_16x16_a954694dda754d44_0", 16, 16, "playstation_button_circle_outline")    # X
 glyph("tex1_16x16_c78319a187997148_0", 16, 16, "playstation_button_triangle_outline")  # Y
 glyph("tex1_16x16_fd8f1a5a26d95e59_0", 16, 16, "playstation_trigger_r2_outline", 1.0)  # R
 z_button("tex1_48x24_c07e25b9bca86b7e_ce3f64d5da874475_8", 48, 24)                     # Z

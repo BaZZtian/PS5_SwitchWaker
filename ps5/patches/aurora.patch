@@ -16,3 +16,22 @@ index 447ead8..8ce4942 100644
  #elif defined(SDL_PLATFORM_LINUX)
    const char* driver = SDL_GetCurrentVideoDriver();
    if (SDL_strcmp(driver, "wayland") == 0) {
+diff --git a/lib/dolphin/pad/pad.cpp b/lib/dolphin/pad/pad.cpp
+index 4e135d2..ff6665a 100644
+--- a/lib/dolphin/pad/pad.cpp
++++ b/lib/dolphin/pad/pad.cpp
+@@ -96,10 +96,12 @@ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsPS4{{
+     {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, PAD_BUTTON_RIGHT},
+ }};
+ 
++// PS5 port: by position, as the GameCube pad has them around A: B to its left (Square), X to its
++// right (Circle), Y above (Triangle). The HUD's symbols follow (ps5/art/make-glyphs.py).
+ std::array<PADButtonMapping, PAD_BUTTON_COUNT> g_defaultButtonsPS5{{
+     {SDL_GAMEPAD_BUTTON_SOUTH, PAD_BUTTON_A},
+-    {SDL_GAMEPAD_BUTTON_EAST, PAD_BUTTON_B},
+-    {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_X},
++    {SDL_GAMEPAD_BUTTON_WEST, PAD_BUTTON_B},
++    {SDL_GAMEPAD_BUTTON_EAST, PAD_BUTTON_X},
+     {SDL_GAMEPAD_BUTTON_NORTH, PAD_BUTTON_Y},
+     {SDL_GAMEPAD_BUTTON_START, PAD_BUTTON_START},
+     {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, PAD_TRIGGER_Z},
