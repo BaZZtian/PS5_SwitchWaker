@@ -19,8 +19,7 @@ title screen, name entry, the prologue and Outset, at 60 images a second
 symbols on the HUD. Played for minutes, not hours: nothing past Outset has been
 seen on the console.
 
-No release yet. A release will be the title's folder with no game in it: the
-player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
+A release is the title's folder with no game in it: the player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
 `/data/homebrew/PPSA99309/` beside `eboot.bin`, and the title finds it (the
 first one in its folder, then on a USB drive).
 
@@ -45,8 +44,10 @@ and Circle to its lower left, not where they sit on the pad.
 
 ## Install
 
-There is no release yet: build the title's folder yourself (see Build). It
-contains no game data.
+Download `WindWaker-PS5-vX.Y.Z.zip` from the
+[latest release](https://github.com/griches/PS5_SwitchWaker/releases/latest) and
+unpack it: it holds one folder, `PPSA99309`. (Or build that folder yourself, see
+Build.) It contains no game data.
 
 **What the console needs**
 
@@ -57,7 +58,7 @@ contains no game data.
 
 **Steps**
 
-1. Build: the result is the folder `dist/PPSA99309/`.
+1. Unpack the release (or build: the result is the folder `dist/PPSA99309/`).
 2. Copy that whole folder to the console as `/data/homebrew/PPSA99309/`, so that
    you have:
 
