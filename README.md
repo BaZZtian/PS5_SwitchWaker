@@ -113,8 +113,10 @@ own work, and you download it yourself.
 The pack tried here is **Hypatia's "WWHD Mod" v2.0001a**, about 5,700 textures
 covering most of the game. Its downloads are in the first post of
 [its thread on the Dolphin forum](https://forums.dolphin-emu.org/thread-55004.html).
-Take **"PC DDS Half Size"** (a `.7z` of 850 MB, 2.5 GB unpacked): the port reads
-it as it is. The full-size one is four times larger for a picture that is hard
+Take **"PC DDS Half Size"** (a `.7z` of 850 MB, 2.5 GB unpacked), which is the
+one used here:
+[direct download from the author's Google Drive mirror](https://drive.google.com/file/d/1qBK8YOeSAwLpNP3NUkwcXgvUnQPKlgj7/view?usp=sharing)
+(`Hypatia WWHD Mod v2.0001a (DDS-Half).7z`). The port reads it as it is. The full-size one is four times larger for a picture that is hard
 to tell apart, and the PNG one is not suitable.
 
 1. Unpack the `.7z` on a computer. Inside is a folder `GZL`.
