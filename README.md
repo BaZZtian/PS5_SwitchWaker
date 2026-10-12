@@ -132,7 +132,10 @@ its own GameCube ones, so the DualSense's symbols this port draws are lost while
 it is on. To have PlayStation buttons with the pack, also copy the `HUD` folder
 from its `-[Optional Textures]-/[HUD] Controller Buttons - Playstation` over
 the `HUD` folder in `hd_textures`, replacing files: those label the buttons by
-position, as this port maps them.
+position, as this port maps them. That set's camera-stick picture (beside the
+eye) is a ball with an up arrow, which reads as the Triangle button: delete
+`HUD/01 High Res HUD/Button Icons/Camera/tex1_128x32_523124ff1f96d4bc_e7820c87ebbc4db4_9.dds`
+from `hd_textures` and the port's own right-stick picture is drawn instead.
 
 ## Development
 
