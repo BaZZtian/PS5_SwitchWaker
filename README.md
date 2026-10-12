@@ -1,5 +1,9 @@
 # Wind Waker (GameCube) for PlayStation 5
 
+[![stars](https://img.shields.io/github/stars/griches/PS5_SwitchWaker?style=flat)](https://github.com/griches/PS5_SwitchWaker/stargazers)
+[![release](https://img.shields.io/github/v/release/griches/PS5_SwitchWaker)](https://github.com/griches/PS5_SwitchWaker/releases/latest)
+[![licence](https://img.shields.io/badge/licence-GPL--3.0%20as%20built-blue)](LICENSING.md)
+
 A PS5 homebrew port of [SwitchWaker](https://github.com/centollOS/SwitchWaker), the
 native port of the 2002 GameCube game (USA disc `GZLE01`, revision 0) compiled
 from its decompilation and drawn with [Aurora](https://github.com/encounter/aurora).
