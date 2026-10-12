@@ -29,7 +29,7 @@ first one in its folder, then on a USB drive).
 
 | Area | State |
 | --- | --- |
-| Disc | Found in the title's folder; a `.iso` was used on the console, `.ciso` only on the Mac build. A missing or wrong disc closes the title with a console notification (the close is seen working; the notification's text has not been read on a television yet) |
+| Disc | Found in the title's folder; a `.iso` and a `.ciso` have both been run on the console; `.gcm` has not. A missing or wrong disc closes the title with a console notification (the close is seen working; the notification's text has not been read on a television yet) |
 | Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
 | 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
 | Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
