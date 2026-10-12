@@ -55,6 +55,99 @@ index 05ecca5..292ce89 100644
      fopMsgM_setPaneData(&i_Meter->field_0x1da8[0], sMainParts1, 'baa');
      fopMsgM_setPaneData(&i_Meter->field_0x1e18[0], sMainParts1, 'bawe');
      fopMsgM_setPaneData(&i_Meter->field_0x26a0, sMainParts1, 'bar1');
+diff --git a/game/src/f_op/f_op_scene_req.cpp b/game/src/f_op/f_op_scene_req.cpp
+index 08b0cee..0febd75 100644
+--- a/game/src/f_op/f_op_scene_req.cpp
++++ b/game/src/f_op/f_op_scene_req.cpp
+@@ -35,7 +35,46 @@ static cPhs_State fopScnRq_phase_Done(scene_request_class* i_sceneReq) {
+     return cPhs_NEXT_e;
+ }
+ 
++#if TARGET_PC
++#include "f_pc/f_pc_base.h"
++#include "f_pc/f_pc_delete_tag.h"
++#include <cstdio>
++// A scene request that stays in one step: every 300 calls, which step and what the delete queue holds.
++static void pc_fopScnRq_watch(scene_request_class* i_sceneReq) {
++    static scene_request_class* sReq;
++    static int sScene = -2, sNode = -2;
++    static unsigned sCalls;
++    const int scene = i_sceneReq->mReqPhsProcCls.id, node = i_sceneReq->mCrtReq.mReqPhsProc.id;
++    if (i_sceneReq != sReq || scene != sScene || node != sNode) {
++        sReq = i_sceneReq;
++        sScene = scene;
++        sNode = node;
++        sCalls = 0;
++        return;
++    }
++    if (++sCalls % 300 != 0) {
++        return;
++    }
++    fprintf(stderr, "[cos] scene-req-watch: %u calls in one step: fade %d, scene step %d, node step %d, proc %d, "
++                    "delete queue %d, overlap doing %d done %d\n", sCalls, i_sceneReq->mFadeRequest != NULL, scene,
++            node, (int)i_sceneReq->mCrtReq.mProcName, (int)g_fpcDtTg_Queue.mSize, (int)fopOvlpM_IsDoingReq(),
++            (int)fopOvlpM_IsDone());
++    int shown = 0;
++    for (node_class* n = g_fpcDtTg_Queue.mpHead; n != NULL && shown < 12; n = n->mpNextNode, shown++) {
++        delete_tag_class* tag = (delete_tag_class*)n;
++        base_process_class* proc = (base_process_class*)tag->base.mpTagData;
++        fprintf(stderr, "[cos] scene-req-watch:   deleting proc name %d id %u timer %d\n",
++                proc != NULL ? (int)proc->mProfName : -1, proc != NULL ? (unsigned)proc->mBsPcId : 0u,
++                (int)tag->mTimer);
++    }
++    fflush(stderr);
++}
++#endif
++
+ static cPhs_State fopScnRq_Execute(scene_request_class* i_sceneReq) {
++#if TARGET_PC
++    pc_fopScnRq_watch(i_sceneReq);
++#endif
+     cPhs_State phase_state = cPhs_Do(&i_sceneReq->mReqPhsProcCls, i_sceneReq);
+     switch (phase_state) {
+     case cPhs_NEXT_e:
+diff --git a/game/src/f_pc/f_pc_method.cpp b/game/src/f_pc/f_pc_method.cpp
+index 355f0e7..57070e1 100644
+--- a/game/src/f_pc/f_pc_method.cpp
++++ b/game/src/f_pc/f_pc_method.cpp
+@@ -5,6 +5,16 @@
+ 
+ #include "f_pc/f_pc_method.h"
+ 
++#if TARGET_PC
++// Some actors declare these methods as returning bool (one byte) and are called here as
++// returning int: on x86-64 the rest of the register is whatever was there, so TRUE can read as
++// something other than 1 and e.g. a delete is retried for ever (d_a_tag_attention's Mthd_Delete
++// at the end of A_mori's MEET_TETORA: the next scene never came). Only the low byte counts.
++#define PC_MTD_BOOL(x) ((x) & 0xFF)
++#else
++#define PC_MTD_BOOL(x) (x)
++#endif
++
+ /* 8003EF00-8003EF38       .text fpcMtd_Method__FPFPv_iPv */
+ int fpcMtd_Method(process_method_func i_methodFunc, void* i_data) {
+     if (i_methodFunc != NULL)
+@@ -15,17 +25,17 @@ int fpcMtd_Method(process_method_func i_methodFunc, void* i_data) {
+ 
+ /* 8003EF38-8003EF5C       .text fpcMtd_Execute__FP20process_method_classPv */
+ BOOL fpcMtd_Execute(process_method_class* i_methods, void* i_data) {
+-    return fpcMtd_Method(i_methods->mpExecuteFunc, i_data);
++    return PC_MTD_BOOL(fpcMtd_Method(i_methods->mpExecuteFunc, i_data));
+ }
+ 
+ /* 8003EF5C-8003EF80       .text fpcMtd_IsDelete__FP20process_method_classPv */
+ BOOL fpcMtd_IsDelete(process_method_class* i_methods, void* i_data) {
+-    return fpcMtd_Method(i_methods->mpIsDeleteFunc, i_data);
++    return PC_MTD_BOOL(fpcMtd_Method(i_methods->mpIsDeleteFunc, i_data));
+ }
+ 
+ /* 8003EF80-8003EFA4       .text fpcMtd_Delete__FP20process_method_classPv */
+ BOOL fpcMtd_Delete(process_method_class* i_methods, void* i_data) {
+-    return fpcMtd_Method(i_methods->mpDeleteFunc, i_data);
++    return PC_MTD_BOOL(fpcMtd_Method(i_methods->mpDeleteFunc, i_data));
+ }
+ 
+ /* 8003EFA4-8003EFC8       .text fpcMtd_Create__FP20process_method_classPv */
 diff --git a/native/src/pc/features/pc_menu.cpp b/native/src/pc/features/pc_menu.cpp
 index 3a26b60..fb9c5f0 100644
 --- a/native/src/pc/features/pc_menu.cpp
@@ -212,8 +305,46 @@ index aef4e19..c2c3de0 100644
      debugShotFrameEnd(frame);
      if (!sShotOn || !wanted(frame)) {
          return;
+diff --git a/native/src/pc/harness/sweeps/pc_event_sweep.cpp b/native/src/pc/harness/sweeps/pc_event_sweep.cpp
+index aeba943..b972772 100644
+--- a/native/src/pc/harness/sweeps/pc_event_sweep.cpp
++++ b/native/src/pc/harness/sweeps/pc_event_sweep.cpp
+@@ -504,10 +504,23 @@ int demoBank(const char* file) {
+ }
+ 
+ // A stage change asked for by the running event (or anything else): the run ends here.
++bool sFollowing = false;
++
+ bool checkStageChange() {
+     if (!dComIfGp_isEnableNextStage()) {
+         return false;
+     }
++    // COS_EVENT_SWEEP_FOLLOW=1: go on through the change instead (the run ends with --frames).
++    if (getenv("COS_EVENT_SWEEP_FOLLOW") != nullptr) {
++        if (!sFollowing) {
++            sFollowing = true;
++            setDrivenPad(true, 0, 0, 0);
++            writef(STDERR_FILENO, "[cos] event-sweep: following the stage change to %s room %d point %d layer %d\n",
++                   dComIfGp_getNextStageName(), (int)dComIfGp_getNextStageRoomNo(),
++                   (int)dComIfGp_getNextStagePoint(), (int)dComIfGp_getNextStageLayer());
++        }
++        return true;
++    }
+     detail(" next=%s", dComIfGp_getNextStageName());
+     result("stage-change");
+     stopRun("a stage change");
+@@ -516,6 +529,9 @@ bool checkStageChange() {
+ } // namespace
+ 
+ void eventSweepFrame(unsigned int frames) {
++    if (sFollowing) {
++        return;
++    }
+     if (!sChecked) {
+         sChecked = true;
+         if (gConfig.smoke == nullptr || strcmp(gConfig.smoke, "event-sweep") != 0) {
 diff --git a/native/src/pc/runtime/pc_crash.cpp b/native/src/pc/runtime/pc_crash.cpp
-index 094f649..48d32d3 100644
+index 094f649..7adb0a1 100644
 --- a/native/src/pc/runtime/pc_crash.cpp
 +++ b/native/src/pc/runtime/pc_crash.cpp
 @@ -221,6 +221,9 @@ void writeFrames(int fd, void** frames, int n, int exact) {
@@ -226,7 +357,22 @@ index 094f649..48d32d3 100644
  #else
      char name[64] = "";
      pthread_getname_np(pthread_self(), name, sizeof(name));
-@@ -399,6 +402,10 @@ void installCrashHandler() {
+@@ -338,6 +341,14 @@ void writef(int fd, const char* fmt, ...) {
+     if (len >= (int)sizeof(buf)) {
+         len = sizeof(buf) - 1;
+     }
++#ifdef __PROSPERO__
++    // The console's log takes standard error through stdio only (ps5/src/platform.c).
++    if (fd == STDERR_FILENO) {
++        fwrite(buf, 1, (size_t)len, stderr);
++        fflush(stderr);
++        return;
++    }
++#endif
+     const char* p = buf;
+     while (len > 0) {
+         ssize_t w = write(fd, p, (size_t)len);
+@@ -399,6 +410,10 @@ void installCrashHandler() {
      // libnx's exception handler (switch/native/source/cos_switch.cpp) reports crashes; it adds
      // this state line.
      cos_switch_set_crash_state_writer(writeState);
