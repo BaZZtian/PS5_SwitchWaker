@@ -1,0 +1,18 @@
+diff --git a/lib/dawn/BackendBinding.cpp b/lib/dawn/BackendBinding.cpp
+index 447ead8..8ce4942 100644
+--- a/lib/dawn/BackendBinding.cpp
++++ b/lib/dawn/BackendBinding.cpp
+@@ -28,6 +28,13 @@ std::shared_ptr<wgpu::ChainedStruct> SetupWindowAndGetSurfaceDescriptor(SDL_Wind
+   desc->hwnd = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+   desc->hinstance = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_INSTANCE_POINTER, nullptr);
+   return std::move(desc);
++#elif defined(__PROSPERO__)
++  // PlayStation 5: one output and no window. Dawn's PS5 port takes the Switch's
++  // native-window descriptor for it (VK_KHR_display underneath); any token will do.
++  static int output;
++  std::shared_ptr<wgpu::SurfaceSourceSwitchNWindow> desc = std::make_shared<wgpu::SurfaceSourceSwitchNWindow>();
++  desc->window = &output;
++  return std::move(desc);
+ #elif defined(SDL_PLATFORM_LINUX)
+   const char* driver = SDL_GetCurrentVideoDriver();
+   if (SDL_strcmp(driver, "wayland") == 0) {

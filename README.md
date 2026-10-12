@@ -1,0 +1,82 @@
+# Wind Waker (GameCube) for PlayStation 5
+
+A PS5 homebrew port of [SwitchWaker](https://github.com/centollOS/SwitchWaker), the
+native port of the 2002 GameCube game (USA disc `GZLE01`, revision 0) compiled
+from its decompilation and drawn with [Aurora](https://github.com/encounter/aurora).
+It is laid out like [PS5_Dusklight](https://github.com/griches/PS5_Dusklight) and
+uses the same console layer: Aurora on Dawn's WebGPU on RADV, from the
+[PS5 Vulkan](https://github.com/mihawk-99/PS5_Vulkan) stack.
+
+The build reads no disc and holds no game data: SwitchWaker's runtime-assets
+mode compiles against stub headers and fills them from the player's own disc
+image when the title starts.
+
+## Status
+
+**Runs on the console.** First run on 2026-10-12 on a PS5 at 3840x2160: the
+title screen, name entry, the prologue and Outset, at 60 images a second
+(frame interpolation; the game's logic stays at 30), with the DualSense's
+symbols on the HUD. Played for minutes, not hours: nothing past Outset has been
+seen on the console.
+
+No release yet. A release will be the title's folder with no game in it: the
+player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
+`/data/homebrew/PPSA99309/` beside `eboot.bin`, and the title finds it (the
+first one in its folder, then on a USB drive).
+
+| Area | State |
+| --- | --- |
+| Disc | Found in the title's folder; a `.iso` was used on the console, `.ciso` only on the Mac build. A missing or wrong disc exits with a line in klog and no message on screen |
+| Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
+| 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
+| Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
+| Button prompts | The HUD shows Cross, Circle, Square, Triangle, R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, Kenney's CC0 Input Prompts). Not done: the button pictures inside message text (they are in the game's font), and the options menu's own hints, which still name the GameCube's buttons |
+| Options menu | The touch pad's click opens it |
+| Saves, settings | `/data/homebrew/PPSA99309/user/`; the first start asks to create a save file, as the game does on an empty memory card |
+| HD textures | SwitchWaker's replacement of textures from a Dolphin pack the player supplies (`user/hd_textures`, off by default) is built in; not yet seen working on the console |
+| Sound | Not checked by ear in this log |
+| DevLoop | `devloop-shot` and `devloop-quit` in the title's folder (registered as `windwaker-gc`); the shot answers once the game's loop runs |
+| Art | The icon and background are the port's own, cel-shaded, made with an image generator (`ps5/art/`) |
+
+Controls: left stick to move, right stick for the camera (the C stick), Cross A,
+Circle B, Square X, Triangle Y, R1 Z, L2 L, R2 R, Options START. The mapping is
+by name, as PS5_Dusklight's, which on the HUD puts Square to the right of Cross
+and Circle to its lower left, not where they sit on the pad.
+
+To try a change without the console:
+
+```sh
+cmake -S vendor/switchwaker/native -B build/native-mac -G Ninja \
+    -DFETCHCONTENT_SOURCE_DIR_AURORA=$PWD/.deps/aurora -DCOS_AURORA_PREPATCHED=ON \
+    -DCOS_RECOMPCORE_DIR=$PWD/.deps/recompcore \
+    -DCOS_RUNTIME_ASSETS=ON -DCOS_ASSETS_DIR=$PWD/.deps/assets/GZLE01
+ninja -C build/native-mac switchwaker
+COS_BUILD_DIR=$PWD/build/native-mac COS_DISC=/path/to/GZLE01.iso COS_FPS60=1 \
+    COS_BUTTON_GLYPHS=$PWD/ps5/art/glyphs vendor/switchwaker/native/tools/run.sh run \
+    --preset sailing --aspect 16:9 --frames 700 --shot 690
+```
+
+`COS_TEXTURE_DUMPS=1` writes every texture drawn into the cache folder's
+`texture_dumps`, named as a replacement for it must be named.
+
+## Build
+
+As PS5_Dusklight: on Linux (on a Mac, in the Lima VM) with PS5_Vulkan, PS5_Mesa
+and PS5_PayloadSDK beside this folder.
+
+```sh
+ps5/tools/vm.sh build     # from macOS; ps5/tools/build.sh inside the VM
+ps5/tools/vm.sh deploy
+ps5/tools/vm.sh run
+```
+
+`build.sh` runs `setup-source.sh` first, which patches `vendor/switchwaker`
+(`ps5/patches/switchwaker.patch`, every hunk behind `__PROSPERO__`) and fetches
+into `.deps/` Aurora at SwitchWaker's pin with its patches, Dolphin's DSP HLE
+sources and the stub asset headers. While changing `vendor/switchwaker`, run
+`git -C vendor/switchwaker diff > ps5/patches/switchwaker.patch` before a build.
+
+## Licence
+
+GPL-3.0 for the repository as a whole and for a built title: see
+[`LICENSING.md`](LICENSING.md). No game data is stored here or built in.
