@@ -18,12 +18,13 @@ set -euo pipefail
 
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
+source "$ps5/tools/game-version.sh"
 vulkan=$(cd -- "${PS5_VULKAN_DIR:-$root/../PS5_Vulkan}" && pwd)
 bash "$ps5/tools/setup-source.sh"
 dawn=$(bash "$ps5/tools/setup-dawn.sh")
 sdl=$(bash "$ps5/tools/setup-sdl.sh")
 sdk=$(bash "$ps5/tools/setup-sdk.sh")
-build=${PS5_BUILD_DIR:-$root/build/game}
+build=${PS5_BUILD_DIR:-$root/build/game$cos_build_suffix}
 ninja=$(command -v ninja || echo "$HOME/.local/bin/ninja")
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang || true)}
 
@@ -35,8 +36,14 @@ if [[ ! -f $build/build.ninja ]]; then
         -DPS5_PORT_DIR="$root" -DPS5_VULKAN_DIR="$vulkan" -DDAWN_DIR="$dawn" -DSDL_DIR="$sdl" \
         -DFETCHCONTENT_SOURCE_DIR_AURORA="$root/.deps/aurora" -DCOS_AURORA_PREPATCHED=ON \
         -DCOS_RECOMPCORE_DIR="$root/.deps/recompcore" \
-        -DCOS_RUNTIME_ASSETS=ON -DCOS_ASSETS_DIR="$root/.deps/assets/GZLE01" \
+        -DCOS_VERSION="$cos_version" -DCOS_GAME_ID="$cos_game_id" \
+        -DCOS_RUNTIME_ASSETS=ON -DCOS_ASSETS_DIR="$root/.deps/assets/$cos_game_id" \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build/configure.log" 2>&1 \
         || { tail -60 "$build/configure.log" >&2; exit 1; }
 fi
+grep -q "^COS_VERSION:STRING=$cos_version$" "$build/CMakeCache.txt" &&
+    grep -q "^COS_GAME_ID:STRING=$cos_game_id$" "$build/CMakeCache.txt" || {
+    echo "build directory $build is not configured for $cos_game_id; use a separate PS5_BUILD_DIR" >&2
+    exit 2
+}
 "$ninja" -C "$build" "${@:-switchwaker}"

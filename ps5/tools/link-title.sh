@@ -63,6 +63,13 @@ for file in "$archive" "$tool" "$param" "$sdk/bin/prospero-lld" "$vulkan/tools/r
         "$vulkan/runtime/libc.prx"; do
     [[ -e $file ]] || { echo "missing: $file" >&2; exit 2; }
 done
+# Mesa's unimplemented weak entrypoints are nullptr fallbacks, not console imports.
+# LLD 21+ can resolve those locally without changing strong or provided SDK imports.
+lld_version=$("$sdk/bin/prospero-lld" --version)
+if [[ ! $lld_version =~ LLD[[:space:]]+([0-9]+)\. ]] || (( BASH_REMATCH[1] < 21 )); then
+    echo "link-title.sh: LLD 21 or newer is required for optional weak entrypoints" >&2
+    exit 2
+fi
 mkdir -p "$work/link/obj" "$work/link/stubs"
 cc() { PS5_PAYLOAD_SDK="$sdk" sh "$vulkan/tooling/prospero-clang18" "$@"; }
 
@@ -131,6 +138,7 @@ if [[ -n $tls_null ]]; then
 fi
 [[ -n $tls_null ]] && echo "link-title.sh: $(wc -w <<<"$tls_null") thread_local initialisation references are null" >&2
 "$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" \
+    -z nodynamic-undefined-weak \
     --version-script "$native/app-symbols.map" --exclude-libs=ALL \
     -e _start -o "$work/link/llvm-pie.elf" \
     "$work/link/obj/app_crt.o" --start-group "${objects[@]}" "${experimental[@]}" --end-group \

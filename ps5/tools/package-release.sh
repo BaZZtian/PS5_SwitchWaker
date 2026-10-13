@@ -16,12 +16,13 @@ set -euo pipefail
 version=${1:?usage: package-release.sh VERSION}
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
+source "$ps5/tools/game-version.sh"
 vulkan=$(cd -- "${PS5_VULKAN_DIR:-$root/../PS5_Vulkan}" && pwd)
 upstream="$root/vendor/switchwaker"
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$ps5/sce_sys/param.json")
 app="$root/dist/$title_id"
 for file in eboot.bin initial_pipeline_cache.db sce_sys/param.json sce_sys/icon0.png sce_sys/pic0.dds \
-    sce_sys/pic1.dds sce_module/libc.prx res/ps5-glyphs res/shader-cache/dawn_cache.db; do
+    sce_sys/pic1.dds sce_module/libc.prx res/ps5-glyphs res/shader-cache/dawn_cache.db res/div-table.bin; do
     [[ -e $app/$file ]] || { echo "missing $app/$file: run build.sh first" >&2; exit 2; }
 done
 # the caches the title ships are under res/; a console's own, a save or a pack are not for a release
@@ -78,15 +79,15 @@ revisions above.
 Compiler: $(${PS5_CLANG:-clang} --version | head -1)
 
 No game data is included. The Legend of Zelda: The Wind Waker belongs to
-Nintendo; this title does nothing without a GameCube disc image of the USA disc
-(GZLE01, .iso, .gcm or .ciso) that you provide, placed beside eboot.bin. The
+Nintendo; this ${PS5_GAME_VERSION:-usa} build needs your own GameCube disc image
+($cos_game_id revision 0, .iso, .gcm or .ciso), placed beside eboot.bin. The
 pictures in sce_sys/ are the port's own, and the files in res/ are button
 symbols from Kenney's CC0 Input Prompts and shader caches this build produced
 on a console.
 
 eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)
 SOURCE
-out="$root/dist/WindWaker-PS5-v$version.zip"
+out="$root/dist/WindWaker-PS5-v$version$cos_build_suffix.zip"
 rm -f "$out"
 (cd "$root/dist" && zip -q -r -X "$out" "$title_id" -x '*/.DS_Store')
 printf '==> %s (%s bytes)\n' "$out" "$(stat -c %s "$out")"

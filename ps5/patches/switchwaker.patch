@@ -222,10 +222,10 @@ index 355f0e7..57070e1 100644
  
  /* 8003EFA4-8003EFC8       .text fpcMtd_Create__FP20process_method_classPv */
 diff --git a/native/src/pc/features/pc_menu.cpp b/native/src/pc/features/pc_menu.cpp
-index 3a26b60..fb9c5f0 100644
+index 821c10b..40bbb4d 100644
 --- a/native/src/pc/features/pc_menu.cpp
 +++ b/native/src/pc/features/pc_menu.cpp
-@@ -144,6 +144,10 @@ uint32_t readGamepads() {
+@@ -150,6 +150,10 @@ uint32_t readGamepads() {
          // Minus alone: the SDL shim shows every controller as a Pro Controller, whose mapping gives
          // Minus (BACK) to no game button.
          bool combo = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_BACK);
@@ -236,7 +236,7 @@ index 3a26b60..fb9c5f0 100644
  #else
          const bool lt = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 16000;
          const bool rt = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16000;
-@@ -448,7 +452,14 @@ const PcSettingChoice kFbScale[] = {
+@@ -455,7 +459,14 @@ const PcSettingChoice kFbScale[] = {
  #endif
      {"1.0", "854x480 (1.0)"},  {"1.125", "960x540 (1.125)"}, {"1.25", "1067x600 (1.25)"},
      {"1.5", "1280x720 (1.5)"}, {"2.0", "1707x960 (2.0)"},    {"2.25", "1920x1080 (2.25)"},
@@ -251,7 +251,7 @@ index 3a26b60..fb9c5f0 100644
  const PcSettingChoice kAspect[] = {{"16:9", "16:9 (panorámica)", "16:9 (widescreen)"}, {"4:3", "4:3 (GameCube)"}, {"16:10", "16:10"}};
  const PcSettingChoice kOnOff[] = {{"0", "Desactivado", "Off"}, {"1", "Activado", "On"}};
  const PcSettingChoice kHdMaxSize[] = {{"auto", "Automático (512 / 1024)", "Automatic (512 / 1024)"}, {"256", "256"}, {"512", "512"},
-@@ -528,6 +539,13 @@ const PcSettingDesc kBuiltins[] = {
+@@ -540,6 +551,13 @@ const PcSettingDesc kBuiltins[] = {
       70,
       "Aspect ratio",
       "16:9 widescreen or the GameCube's original 4:3."},
@@ -265,7 +265,7 @@ index 3a26b60..fb9c5f0 100644
      {"COS_HD_TEXTURES", "Texturas HD", "Usa el paquete de texturas en alta resolución si está instalado.",
       PC_SETTING_TAB_GRAPHICS, 0, CHOICES(kOnOff), "0", nullptr, nullptr, 80,
       "HD textures",
-@@ -1122,11 +1140,18 @@ void drawMenu() {
+@@ -1312,11 +1330,18 @@ void drawMenu() {
      }
      ImGui::SetCursorPosY(ImGui::GetWindowHeight() - ImGui::GetTextLineHeightWithSpacing() -
                           ImGui::GetStyle().WindowPadding.y);
@@ -652,70 +652,63 @@ index 094f649..08447d8 100644
      // Alternate signal stack for this (the main) thread, so a stack overflow still reports.
      static char sAltStack[256 * 1024];
 diff --git a/native/src/pc/runtime/pc_disc.cpp b/native/src/pc/runtime/pc_disc.cpp
-index 8d3e3b5..4ee3265 100644
+index 90cc87c..91c564d 100644
 --- a/native/src/pc/runtime/pc_disc.cpp
 +++ b/native/src/pc/runtime/pc_disc.cpp
-@@ -10,6 +10,7 @@
+@@ -13,6 +13,7 @@
  #include <cerrno>
  #include <cstdarg>
  #include <cstdio>
 +#include <cstdlib>
  #include <cstring>
+ #include <string>
  #include <fcntl.h>
- #include <sys/stat.h>
-@@ -19,6 +20,13 @@
+@@ -23,6 +24,13 @@
  #include "cos_switch.h"
  #endif
  
 +#if defined(__PROSPERO__)
 +extern "C" int sceKernelSendNotificationRequest(int device, void* request, size_t size, int blocking);
 +#ifndef PS5_TITLE_ID
-+#define PS5_TITLE_ID "PPSA99309" // ps5/sce_sys/param.json
++#define PS5_TITLE_ID "PPSA99309"
 +#endif
 +#endif
 +
  namespace pc {
  
  namespace {
-@@ -43,6 +51,28 @@ void exitDisc() {
-              "imagen sin comprimir en sdmc:/switch/switchwaker/GZLE01.iso.",
-              sDiscError);
+@@ -118,6 +126,25 @@ void exitDisc() {
+     playerMessage(text, sizeof text);
+     writef(STDERR_FILENO, "[cos] DISC: shown: %s\n", text);
      cos_switch_show_error(text);
 +#endif
 +#if defined(__PROSPERO__)
-+    // PlayStation 5: the title has no picture yet, so the console's own notification says it; it
-+    // stays on the home screen after the title has gone.
-+    {
-+        static struct {
-+            char unused[45];
-+            char message[3075];
-+        } request;
-+        if (gConfig.disc == nullptr) {
-+            snprintf(request.message, sizeof request.message,
-+                     "Wind Waker: no game found.\nCopy your own disc image of The Wind Waker (USA, GZLE01, "
-+                     ".iso) into /data/homebrew/" PS5_TITLE_ID "/ or onto a USB drive, then start again.");
-+        } else {
-+            snprintf(request.message, sizeof request.message,
-+                     "Wind Waker: this disc image cannot be used.\n%s\nIt needs The Wind Waker (USA, GZLE01, "
-+                     "revision 0) in /data/homebrew/" PS5_TITLE_ID "/.",
-+                     sDiscError);
-+        }
-+        sceKernelSendNotificationRequest(0, &request, sizeof request, 0);
-+        sleep(2);
++    static struct {
++        char unused[45];
++        char message[3075];
++    } request;
++    if (gConfig.disc == nullptr) {
++        snprintf(request.message, sizeof request.message,
++                 "Wind Waker: no game found.\nCopy your own disc image of The Wind Waker (%s, "
++                 COS_GAME_ID_STR ", revision 0) into /data/homebrew/" PS5_TITLE_ID
++                 "/ or onto a USB drive, then start again.", PC_GAME_REGION_EN);
++    } else {
++        snprintf(request.message, sizeof request.message,
++                 "Wind Waker: this disc image cannot be used.\n%s\nIt needs The Wind Waker (%s, "
++                 COS_GAME_ID_STR ", revision 0) in /data/homebrew/" PS5_TITLE_ID "/.",
++                 sDiscError, PC_GAME_REGION_EN);
 +    }
++    sceKernelSendNotificationRequest(0, &request, sizeof request, 0);
++    sleep(2);
  #endif
      pc_exit(PC_EXIT_DISC);
      __builtin_unreachable();
-@@ -76,8 +106,30 @@ int checkDisc() {
+@@ -152,8 +179,26 @@ int checkDisc() {
          return PC_EXIT_DISC;
      }
      if (memcmp(header, "CISO", 4) == 0) {
 -        discMessage("%s is a CISO image; convert it to a plain .iso (decision H9)", path);
 -        return PC_EXIT_DISC;
-+        // The PS5 port reads CISO images (its nod, ps5/nod, does; so does the desktop hosts' nod,
-+        // with COS_ALLOW_CISO=1 to try it there): the disc's own header is the first block, which
-+        // follows the 0x8000-byte block map. Decision H9 stands elsewhere (the Switch's reader
-+        // takes plain images only).
 +#if defined(__PROSPERO__)
 +        bool ciso = true;
 +#else
@@ -723,7 +716,7 @@ index 8d3e3b5..4ee3265 100644
 +        bool ciso = allow != nullptr && strcmp(allow, "1") == 0;
 +#endif
 +        if (ciso) {
-+            ciso = header[8] != 0; // the first block must be present
++            ciso = header[8] != 0;
 +            fd = ciso ? open(path, O_RDONLY | O_CLOEXEC) : -1;
 +            if (fd >= 0) {
 +                ciso = pread(fd, header, sizeof(header), 0x8000) == (ssize_t)sizeof(header);
@@ -740,7 +733,7 @@ index 8d3e3b5..4ee3265 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index e21ec1b..fe8251c 100644
+index c3592e4..8f1e101 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
 @@ -15,6 +15,10 @@
@@ -754,7 +747,7 @@ index e21ec1b..fe8251c 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +132,81 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +132,85 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -810,6 +803,10 @@ index e21ec1b..fe8251c 100644
 +// Switch's (switch/native/source/cos_switch.cpp), for a television and a faster machine.
 +void ps5Defaults() {
 +    ps5FindDisc();
++    // Personal EUR build: German unless the player's saved setting chooses another language.
++#if VERSION == 3
++    ps5Default("COS_GAME_LANGUAGE", "de");
++#endif
 +    ps5Default("COS_RUN_DIR", "/app0/user");
 +    ps5Default("COS_ASPECT", "16:9");
 +    // 60 images a second by interpolation (docs/FPS60_PLAN.md); the game's logic stays at 30
@@ -836,7 +833,7 @@ index e21ec1b..fe8251c 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +219,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +223,14 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -851,7 +848,7 @@ index e21ec1b..fe8251c 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -257,6 +338,10 @@ int pc_env_audio(void) {
+@@ -260,6 +345,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -862,7 +859,7 @@ index e21ec1b..fe8251c 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -281,6 +366,13 @@ void pc_exit(int code) {
+@@ -284,6 +373,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);
@@ -877,10 +874,10 @@ index e21ec1b..fe8251c 100644
      _Exit(code);
  #endif
 diff --git a/native/src/pc/runtime/pc_main.cpp b/native/src/pc/runtime/pc_main.cpp
-index 9cfa47a..0a822c8 100644
+index b3689d7..f832436 100644
 --- a/native/src/pc/runtime/pc_main.cpp
 +++ b/native/src/pc/runtime/pc_main.cpp
-@@ -42,6 +42,8 @@
+@@ -43,6 +43,8 @@
  #include <sys/stat.h>
  #include <unistd.h>
  
@@ -889,7 +886,7 @@ index 9cfa47a..0a822c8 100644
  #if defined(__SWITCH__)
  #include "JSystem/JAudio/JASAudioThread.h"
  #include "m_Do/m_Do_dvd_thread.h"
-@@ -232,7 +234,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -233,7 +235,25 @@ void pc_aurora_init(int argc, char* argv[]) {
      config.windowWidth = (int)(480 * 3 / 2 * pc_aspect_ratio() + 0.5f);
      config.windowHeight = 480 * 3 / 2;
      config.logLevel = LOG_INFO;
@@ -916,7 +913,7 @@ index 9cfa47a..0a822c8 100644
      config.mem1Size = kMem1Size;
      config.mem2Size = kMem2Size;
      config.blockingPipelines = gConfig.syncPipelines;
-@@ -249,6 +269,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -250,6 +270,25 @@ void pc_aurora_init(int argc, char* argv[]) {
          }
      });
  #endif

@@ -21,6 +21,7 @@
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+source "$root/ps5/tools/game-version.sh"
 upstream="$root/vendor/switchwaker"
 deps="$root/.deps"
 
@@ -69,6 +70,6 @@ fi
     bash "$upstream/native/tools/fetch_recompcore.sh" "$deps/recompcore" >&2
 
 # Stub asset headers
-if [[ ! -f $deps/assets/GZLE01/include/assets/cos_assets.h ]]; then
-    bash "$upstream/native/tools/gen_assets.sh" --stubs --decomp "$deps/decomp" --out "$deps/assets/GZLE01" >&2
+if [[ ! -f $deps/assets/$cos_game_id/include/assets/cos_assets.h ]]; then
+    bash "$upstream/native/tools/gen_assets.sh" --stubs --version "$cos_game_id" --decomp "$deps/decomp" --out "$deps/assets/$cos_game_id" >&2
 fi
