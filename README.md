@@ -24,11 +24,13 @@ symbols on the HUD. Played on the console as far as the forest on Outset, the
 scenes that follow it, and the boss room of Dragon Roost Cavern; nothing else
 has been seen there.
 
-**[Version 1.0.2](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.2)** fixes a crash when the boss of Dragon Roost Cavern appears, and
-stops the whole class of fault behind it (an integer division by zero) from
-ending the game anywhere else. [Version 1.0.1](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.1) fixed a stop on a black
-screen at the end of the forest scene. See [Development](#development) for what
-both were. Copy the [new release](https://github.com/griches/PS5_SwitchWaker/releases/latest) over the old folder; saves carry on.
+**[Version 1.0.3](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.3)** fixes a crash in Dragon Roost Cavern, in the rooms with
+the hanging platforms. [Version 1.0.2](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.2) fixed a crash when the boss of Dragon
+Roost Cavern appears, and stopped the whole class of fault behind it (an
+integer division by zero) from ending the game anywhere else. [Version 1.0.1](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.1)
+fixed a stop on a black screen at the end of the forest scene. See
+[Development](#development) for what
+they were. Copy the [new release](https://github.com/griches/PS5_SwitchWaker/releases/latest) over the old folder; saves carry on.
 
 A release is the title's folder with no game in it: the player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
 `/data/homebrew/PPSA99309/` beside `eboot.bin`, and the title finds it (the
@@ -179,6 +181,17 @@ so a delete could be refused for ever and the next scene never came; on ARM (the
 Mac, the Switch) it does not show. The framework now reads only the low byte
 ([`f_pc_method.cpp` in the patch](ps5/patches/switchwaker.patch)). On the Mac, `COS_EVENT_SWEEP_FOLLOW=1` lets
 `run.sh event-sweep` go on through a stage change an event asks for.
+
+The crash that 1.0.3 fixes is a third one. A hanging platform of Dragon Roost
+Cavern whose ropes were cut on an earlier visit is created with them cut, and
+the rope points are simulated from values nothing has set. A NaN among them
+reaches the arctangent table as an index: the conversion to an integer gives
+0x80000000, which the GameCube's 32 bit address wraps back to the first entry
+and x86-64 turns into a read 4 GB below the table. The lookup now gives the
+first entry for a NaN or a ratio outside the table ([`c_math.cpp` in the patch](ps5/patches/switchwaker.patch)).
+It was found from a player's photograph of the console's error message: the
+two addresses in it, less the load address 0x400000, name `cM_atan2s` and
+`himo_move` in the release's ELF.
 
 The crash that 1.0.2 fixes is the same kind of difference. The boss of Dragon
 Roost Cavern turns towards the player with a step count that is still zero the
