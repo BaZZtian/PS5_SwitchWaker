@@ -80,7 +80,10 @@ Compiler: $(${PS5_CLANG:-clang} --version | head -1)
 
 No game data is included. The Legend of Zelda: The Wind Waker belongs to
 Nintendo; this ${PS5_GAME_VERSION:-usa} build needs your own GameCube disc image
-($cos_game_id revision 0, .iso, .gcm or .ciso), placed beside eboot.bin. The
+($cos_game_id revision 0, .iso, .gcm or .ciso). Select a detected image in the
+touchpad options menu or use automatic discovery from
+/mnt/usbN/Homebrew/WindWaker-Discs/ (USB0-7). Disc-path settings are stored in
+/data/windwaker/settings.ini; see ps5/PAL-USB.md for custom locations. The
 pictures in sce_sys/ are the port's own, and the files in res/ are button
 symbols from Kenney's CC0 Input Prompts and shader caches this build produced
 on a console.

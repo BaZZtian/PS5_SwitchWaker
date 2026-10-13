@@ -28,6 +28,7 @@ def helpers_from(text, patch):
 
 
 HARNESS = r'''
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -48,6 +49,11 @@ static int mappedAccess(const char* path, int mode) { return ::access(mapped(pat
 static void ps5Default(const char* name, const char* value) {
     if (::getenv(name) == nullptr) ::setenv(name, value, 0);
 }
+static const char* pc_settings_get(const char* key) {
+    const char* value = ::getenv(key);
+    return value == nullptr ? "" : value;
+}
+static void writef(int, const char*, ...) {}
 #define opendir mappedOpenDir
 #define fopen mappedOpenFile
 #define access mappedAccess
@@ -114,6 +120,38 @@ int main(int argc, char** argv) {
     fs::rename(root + "/app0/local.iso", root + "/archived/local.iso");
     image("/mnt/usb6/root.gcm"); ::unsetenv("COS_DISC"); ps5FindDisc();
     require(std::string(::getenv("COS_DISC")) == "/mnt/usb6/root.gcm", "USB root fallback beyond USB1");
+    image("/custom/location/preferred.iso");
+    ::setenv("COS_DISC_PATH", "/custom/location/preferred.iso", 1);
+    ::unsetenv("COS_DISC"); ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/custom/location/preferred.iso",
+            "configured absolute image wins over automatic search");
+    ::setenv("COS_DISC_PATH", "/missing/selection.iso", 1);
+    ::unsetenv("COS_DISC"); ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/mnt/usb6/root.gcm",
+            "unavailable configured image falls back without changing the preference");
+    require(std::string(::getenv("COS_DISC_PATH")) == "/missing/selection.iso",
+            "automatic fallback preserves the user's configured image");
+    ::setenv("COS_DISC_DIR", "/custom/location", 1);
+    ::setenv("COS_DISC_PATH", "auto", 1);
+    ::unsetenv("COS_DISC"); ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/custom/location/preferred.iso",
+            "configured search directory precedes default USB roots");
+    ::setenv("COS_DISC_PATH", "/mnt/usb0/Homebrew/WindWaker-Discs/wrong.iso", 1);
+    ::unsetenv("COS_DISC"); ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/custom/location/preferred.iso",
+            "configured wrong-region image is skipped");
+    ::setenv("COS_DISC_PATH", "/custom/location/preferred.iso", 1);
+    const auto menuPaths = ps5DiscPaths();
+    require(std::count(menuPaths.begin(), menuPaths.end(), "/custom/location/preferred.iso") == 1,
+            "options contain configured images once with stable path values");
+    require(std::find(menuPaths.begin(), menuPaths.end(),
+                     "/mnt/usb0/Homebrew/WindWaker-Discs/wrong.iso") == menuPaths.end(),
+            "options do not offer incompatible images");
+    ::setenv("COS_DISC_DIR", "relative/folder", 1);
+    ::setenv("COS_DISC_PATH", "relative/image.iso", 1);
+    ::unsetenv("COS_DISC"); ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/mnt/usb6/root.gcm",
+            "relative configuration does not replace an absolute discovered path");
 }
 '''
 

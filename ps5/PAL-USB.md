@@ -1,114 +1,75 @@
-# European disc and external storage
+# Disc selection and persistent storage
 
-This change adds a separate European build using SwitchWaker's upstream PAL
-implementation at `054dd0eb99ab79e546709cdee2ac5886075b5d7f`. It accepts
-`GZLP01`, revision 0; the default USA build still accepts `GZLE01`, revision 0.
-The region-specific stub headers contain symbol names and sizes, not game data.
-The player supplies their own matching GameCube disc image.
+The PS5 build accepts its matching revision-0 GameCube disc: GZLP01 for the
+European build or GZLE01 for the USA build. Supported formats are `.iso`,
+`.gcm` and `.ciso`, with case-insensitive extensions.
 
-The source proposal is rebased on PS5 v1.0.3, preserving its crash fixes.
-Deploy the complete built title folder: `res/div-table.bin` is generated for
-that executable and must be replaced together with it.
+## Options menu
 
-## Build
+Press the touchpad to open options, then choose **Debug → Disc image**. Left
+and right select **Automatic** or a detected compatible image. Close the title
+fully and restart to apply the choice. The image list is refreshed at startup.
 
-Follow the repository's existing build prerequisites. The title linker now
-requires **LLD 21 or newer** for `-z nodynamic-undefined-weak`. This resolves
-unimplemented optional Mesa entrypoints to null while retaining strong-symbol
-errors and supplied SDK imports. The compiler and linker versions need not be
-the same; ensure the SDK's `prospero-lld` resolves to the newer linker.
+Settings are saved in `/data/windwaker/settings.ini`, outside the app folder.
+When that file is absent, existing `/app0/user/settings.ini` values are imported
+without removing the original file. An explicit `COS_SETTINGS` override still
+selects its own settings file.
 
-```sh
-# USA: existing default; build/game
-bash ps5/tools/build.sh
+For an arbitrary image location, edit the file while the title is closed:
 
-# Europe: separate configuration and stub assets; build/game-eur
-PS5_GAME_VERSION=eur bash ps5/tools/build.sh
-
-# Optional overrides still work, but cannot reuse a build tree from the other region.
-PS5_GAME_VERSION=eur PS5_BUILD_DIR=/path/to/europe-build bash ps5/tools/build.sh
+```ini
+COS_DISC_PATH=/mnt/usb2/MyDiscs/windwaker.iso
 ```
 
-Both variants use title ID `PPSA99309` and write `dist/PPSA99309/`; only one
-region is installed in that title folder at a time. The cache check prevents a
-build tree configured for the wrong region from being silently reused.
+For automatic discovery in another directory:
 
-Package immediately after building, with the same region selection:
-
-```sh
-PS5_GAME_VERSION=eur bash ps5/tools/package-release.sh YOUR_VERSION
+```ini
+COS_DISC_PATH=auto
+COS_DISC_DIR=/mnt/usb2/MyDiscs
 ```
 
-The European ZIP has an `-eur` suffix and its `SOURCE.txt` names `GZLP01`;
-the USA ZIP retains its existing name. The packaging selection must match the
-last linked executable in the shared `dist/PPSA99309` folder.
+Use absolute paths visible inside the title sandbox. Directories are searched
+one level deep. A missing or incompatible saved image falls back to automatic
+discovery without overwriting the saved choice.
 
-The European build defaults to German. An existing player choice is preserved;
-use the touchpad options menu to choose another European language, then restart.
-USA and Europe use their upstream region-specific memory-card storage, so a USA
-save should not be assumed to be interchangeable with a PAL save.
+## Automatic discovery
 
-## Disc storage
+The search order is:
 
-For a disc that survives replacement of the app folder, put it directly in
-`/mnt/usbN/Homebrew/WindWaker-Discs/` on an external drive. The app probes USB0
-through USB7, allowing the drive number to change after reconnecting or rebooting.
-Supported extensions are `.iso`, `.gcm` and `.ciso`, case-insensitively.
+1. A readable legacy `COS_DISC` override.
+2. The compatible image selected by `COS_DISC_PATH`.
+3. The directory configured by `COS_DISC_DIR`.
+4. `/mnt/usbN/Homebrew/WindWaker-Discs/`, for USB0 through USB7.
+5. `/app0`, retaining the existing app-folder layout.
+6. USB0 through USB7 roots.
 
-Search order:
+The dedicated external directory is recommended: it survives app-folder
+replacement and is searched across USB numbers after reconnection or reboot.
+Discovery checks the region, revision and GameCube header. The disc reader
+performs the remaining game-data checks after selection.
 
-1. A readable explicitly configured `COS_DISC` path.
-2. The dedicated `Homebrew/WindWaker-Discs` folder on USB0 through USB7.
-3. The app's `/app0` folder, preserving the existing install layout.
-4. USB0 through USB7 roots, preserving older external layouts.
+External volumes and `/data` must be mounted into the title sandbox with write
+access for settings. **ShadowMountPlus 1.7beta4+** provides these mounts with
+its sandbox watcher enabled; another loader must provide equivalent access.
+Seeing a drive in a file manager does not establish title-sandbox access.
 
-An empty or missing saved path is cleared and rediscovered. Folder discovery
-skips images with another region, a nonzero disc revision, truncated headers or
-an invalid GameCube magic value. The normal reader still performs full disc and
-game-data checks after selection; discovery is not a full dump-integrity check.
-Subdirectories are not recursively searched.
+## Build and tests
 
-External paths must be visible inside the running title's sandbox. Finding a
-drive in a web file manager alone does not prove the title can read it. Test
-with the internal app-root disc moved aside while the title is fully closed,
-then confirm the selected `COS_DISC` path in the console log and a successful
-start. Keep a source copy until that succeeds.
-
-Replacing the app folder preserves an external ISO, but an official USA-only
-update can still replace the European executable. Keep the matching European
-build or use an official release that includes the same support.
-
-## Checks and remaining console coverage
-
-No ROM, SDK or PS5 is needed for the host discovery tests:
+Follow [PAL.md](PAL.md) for regional builds and release packaging. Install the
+complete title folder, including the matching `res/div-table.bin`. Updating to
+a build without PAL or external-disc support removes those features even when
+the external image and settings remain intact.
 
 ```sh
 python3 ps5/tests/test-disc-discovery.py --cxx clang++
-# Or test the same helpers in an already patched checkout:
-python3 ps5/tests/test-disc-discovery.py --source vendor/switchwaker/native/src/pc/runtime/pc_harness.cpp
-# With LLD 21+ and the LLVM tools in PATH:
-bash ps5/tests/test-weak-link.sh
+python3 ps5/tests/test-disc-settings.py --core vendor/switchwaker --cxx clang++
+python3 ps5/tests/test-pal-defaults.py --cxx clang++
 ```
 
-The tests compile the exact helper additions from the patch for both regions,
-use only synthetic 32-byte disc headers, and enable AddressSanitizer and
-UndefinedBehaviorSanitizer. They cover missing drives, empty/stale settings,
-wrong-region/revision filtering, USB renumbering, explicit choices, CISO checks,
-app-root fallback and USB-root fallback beyond USB1.
-
-The weak-link test confirms that an absent optional function stays null, a
-provided optional function remains imported and a missing required function
-still fails the link. Override `CC`, `LD_LLD` and `LLVM_READELF` if needed.
-
-The earlier v1.0.1-based European PS5 title built successfully and passed SELF integrity,
-`cos_scaffold_check`, `cos_sdk_header_check` and `cos_layout_check`. The layout
-check reports 213 structs and 1,465 checks with one upstream ignored header
-analysis issue. A PS5 on firmware 12.40 was confirmed to start with German
-texts on 2026-10-13. The installed executable was verified by SHA-256:
-`1741d0acb3006c22861513459d6dd1232383a1820af4d81124c905b6db9de181`.
-
-**Pending:** a console start using only the HDD ISO, a save/load round trip,
-longer PAL gameplay, and a USA console regression run after the upstream bump.
-The host checks do not establish those results.
-The v1.0.3 rebase passes fresh-patch and host checks, but a rebuilt executable
-and its console runtime are not claimed by this proposal.
+Run after `ps5/tools/setup-source.sh`. The host tests use synthetic headers and
+compile the actual discovery, options registration and settings code with
+AddressSanitizer and UndefinedBehaviorSanitizer. Coverage includes both disc
+regions, stale paths, USB renumbering, custom paths, menu selection, app-folder
+replacement, legacy settings import and write failures. Console validation
+should cover external-disc startup, option selection followed by restart, and
+saving and loading a game.

@@ -317,6 +317,46 @@ index 43728f2..b3ce94c 100644
          if (!s.measured) {
              // Turned on a moment ago (options menu): nothing measured yet.
              ImGui::TextUnformatted("-- fps");
+diff --git a/native/src/pc/features/pc_settings.cpp b/native/src/pc/features/pc_settings.cpp
+index cfa4172..02bf797 100644
+--- a/native/src/pc/features/pc_settings.cpp
++++ b/native/src/pc/features/pc_settings.cpp
+@@ -93,6 +93,9 @@ void computePath() {
+     }
+ #if defined(__SWITCH__)
+     s.path = COS_SWITCH_ROOT "/user/settings.ini";
++#elif defined(__PROSPERO__)
++    // Keep settings outside the title directory replaced by application updates.
++    s.path = "/data/windwaker/settings.ini";
+ #else
+     char exe[PATH_MAX] = {};
+     pc::executablePath(exe, sizeof(exe));
+@@ -401,7 +404,25 @@ void pc_settings_load_early(void) {
+         }
+     }
+ #endif
++#if defined(__PROSPERO__)
++    // Import existing title-folder settings only when no persistent file exists.
++    const bool migrate = s.path == "/data/windwaker/settings.ini" &&
++                         access(s.path.c_str(), F_OK) != 0 && errno == ENOENT &&
++                         access("/app0/user/settings.ini", R_OK) == 0;
++    if (migrate) {
++        const auto persistentPath = s.path;
++        s.path = "/app0/user/settings.ini";
++        readFile();
++        s.path = persistentPath;
++        if (!writeFile()) {
++            pc::writef(STDERR_FILENO, "[cos] settings: legacy values loaded; persistent migration could not be saved\n");
++        }
++    } else {
++        readFile();
++    }
++#else
+     readFile();
++#endif
+     s.lastMode = queryMode();
+     s.haveLastMode = true;
+     // Every value the file gives that the environment does not: into the environment, for code
 diff --git a/native/src/pc/harness/pc_shot.cpp b/native/src/pc/harness/pc_shot.cpp
 index aef4e19..c2c3de0 100644
 --- a/native/src/pc/harness/pc_shot.cpp
@@ -733,27 +773,28 @@ index 90cc87c..91c564d 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index c3592e4..b1837ce 100644
+index c3592e4..ac51beb 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
-@@ -15,6 +15,10 @@
+@@ -15,6 +15,12 @@
  #if defined(__SWITCH__)
  #include "cos_switch.h"
  #endif
 +#if defined(__PROSPERO__)
++#include <algorithm>
 +#include <dirent.h>
 +#include <strings.h>
++#include <vector>
 +#endif
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +132,127 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +134,204 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
 +#elif defined(__PROSPERO__)
-+    // PlayStation 5: a title's own folder is /app0 (which is /data/homebrew/<TITLE_ID>), the one
-+    // place it may write: user/ (saves, settings, caches) and the bundled pipeline cache go there.
++    // PlayStation 5: /app0 is the title folder; settings use their own persistent path.
 +    snprintf(out, size, "/app0/eboot.bin");
 +    return true;
  #else
@@ -789,13 +830,18 @@ index c3592e4..b1837ce 100644
 +           header[0x1F] == 0x3D;
 +}
 +
-+bool ps5DiscFromFolder(const char* directory) {
++std::vector<std::string> ps5DiscsInFolder(const char* directory) {
++    std::vector<std::string> paths;
 +    DIR* folder = opendir(directory);
 +    if (folder == nullptr) {
-+        return false;
++        return paths;
 +    }
 +    char found[512] = "";
-+    while (const dirent* entry = readdir(folder)) {
++    while (paths.size() < 128) {
++        const dirent* entry = readdir(folder);
++        if (entry == nullptr) {
++            break;
++        }
 +        const char* extension = strrchr(entry->d_name, '.');
 +        if (extension == nullptr || (strcasecmp(extension, ".iso") != 0 &&
 +                                    strcasecmp(extension, ".gcm") != 0 &&
@@ -804,13 +850,49 @@ index c3592e4..b1837ce 100644
 +        }
 +        const int length = snprintf(found, sizeof(found), "%s/%s", directory, entry->d_name);
 +        if (length >= 0 && (size_t)length < sizeof(found) && ps5DiscMatches(found)) {
-+            closedir(folder);
-+            ps5Default("COS_DISC", found);
-+            return true;
++            paths.emplace_back(found);
 +        }
 +    }
 +    closedir(folder);
-+    return false;
++    std::sort(paths.begin(), paths.end());
++    return paths;
++}
++
++bool ps5DiscFromFolder(const char* directory) {
++    const auto paths = ps5DiscsInFolder(directory);
++    if (paths.empty()) {
++        return false;
++    }
++    ps5Default("COS_DISC", paths.front().c_str());
++    return true;
++}
++
++std::vector<std::string> ps5DiscPaths() {
++    std::vector<std::string> paths;
++    const auto add = [&](const char* directory) {
++        if (directory == nullptr || directory[0] != '/') {
++            return;
++        }
++        for (const auto& path : ps5DiscsInFolder(directory)) {
++            if (paths.size() < 128 && std::find(paths.begin(), paths.end(), path) == paths.end()) {
++                paths.push_back(path);
++            }
++        }
++    };
++    const char* preferred = pc_settings_get("COS_DISC_PATH");
++    if (preferred[0] == '/' && ps5DiscMatches(preferred)) {
++        paths.emplace_back(preferred);
++    }
++    add(pc_settings_get("COS_DISC_DIR"));
++    char directory[128];
++    for (unsigned int drive = 0; drive < 8; ++drive) {
++        snprintf(directory, sizeof(directory), "/mnt/usb%u/Homebrew/WindWaker-Discs", drive);
++        add(directory);
++        snprintf(directory, sizeof(directory), "/mnt/usb%u", drive);
++        add(directory);
++    }
++    add("/app0");
++    return paths;
 +}
 +
 +void ps5FindDisc() {
@@ -820,6 +902,18 @@ index c3592e4..b1837ce 100644
 +    }
 +    // A saved path may stop existing after an app update or USB renumbering.
 +    unsetenv("COS_DISC");
++    const char* preferred = pc_settings_get("COS_DISC_PATH");
++    if (preferred[0] != '\0' && strcmp(preferred, "auto") != 0) {
++        if (preferred[0] == '/' && ps5DiscMatches(preferred)) {
++            ps5Default("COS_DISC", preferred);
++            return;
++        }
++        writef(STDERR_FILENO, "[cos] disc: saved selection unavailable or incompatible; searching automatically\n");
++    }
++    const char* customDirectory = pc_settings_get("COS_DISC_DIR");
++    if (customDirectory[0] == '/' && ps5DiscFromFolder(customDirectory)) {
++        return;
++    }
 +    // The disc lives outside the updateable app folder. Probe all USB numbers so hotplug and
 +    // reboot renumbering do not require another binary or a hard-coded drive number.
 +    char directory[128];
@@ -841,11 +935,36 @@ index c3592e4..b1837ce 100644
 +}
 +} // namespace
 +
++void ps5RegisterDiscSetting() {
++    // Choices and their strings remain valid for the settings registry's lifetime.
++    static const auto paths = ps5DiscPaths();
++    static const auto choices = [] {
++        std::vector<PcSettingChoice> result;
++        result.reserve(paths.size() + 1);
++        result.push_back({"auto", "Automático", "Automatic"});
++        for (const auto& path : paths) {
++            result.push_back({path.c_str(), path.c_str(), path.c_str()});
++        }
++        return result;
++    }();
++    static const PcSettingDesc desc = {
++        "COS_DISC_PATH", "Imagen de disco",
++        "Elige una imagen detectada con izquierda/derecha. Se aplica al reiniciar. "
++        "Para otra carpeta, configura COS_DISC_DIR en /data/windwaker/settings.ini.",
++        PC_SETTING_TAB_DEBUG, PC_SETTING_RESTART, choices.data(), (int)choices.size(), "auto",
++        nullptr, nullptr, 0, "Disc image",
++        "Use left/right to choose a detected image. Takes effect after restart. "
++        "For another folder, set COS_DISC_DIR in /data/windwaker/settings.ini."
++    };
++    pc_settings_register(&desc);
++}
++
 +// The console's defaults, for what the settings file (the options menu) has not set: as the
 +// Switch's (switch/native/source/cos_switch.cpp), for a television and a faster machine.
 +void ps5Defaults() {
++    ps5RegisterDiscSetting();
 +    ps5FindDisc();
-+    // Personal EUR build: German unless the player's saved setting chooses another language.
++    // European builds default to German unless the player has saved another language.
 +#if VERSION == 3
 +    ps5Default("COS_GAME_LANGUAGE", "de");
 +#endif
@@ -875,7 +994,7 @@ index c3592e4..b1837ce 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +265,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +344,14 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -890,7 +1009,7 @@ index c3592e4..b1837ce 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -260,6 +387,10 @@ int pc_env_audio(void) {
+@@ -260,6 +466,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -901,7 +1020,7 @@ index c3592e4..b1837ce 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -284,6 +415,13 @@ void pc_exit(int code) {
+@@ -284,6 +494,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);

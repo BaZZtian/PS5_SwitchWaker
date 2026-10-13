@@ -32,6 +32,7 @@ def main():
 #include <unistd.h>
 static int writef(int, const char*, ...) { return 0; }
 static void ps5FindDisc() {}
+static void ps5RegisterDiscSetting() {}
 ''' + additions[helper_start:helper_end] + additions[language_start:language_end] + r'''
 }
 int main() {
