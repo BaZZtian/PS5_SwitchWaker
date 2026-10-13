@@ -733,7 +733,7 @@ index 90cc87c..91c564d 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index c3592e4..8f1e101 100644
+index c3592e4..b1837ce 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
 @@ -15,6 +15,10 @@
@@ -747,7 +747,7 @@ index c3592e4..8f1e101 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +132,85 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +132,127 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -770,29 +770,71 @@ index c3592e4..8f1e101 100644
 +    }
 +}
 +
-+// There is no file dialog and no command line: the disc is the first .iso, .gcm or .ciso in the
-+// title's folder, then on a USB drive. checkDisc says what is wrong with it, if anything.
-+void ps5FindDisc() {
-+    if (getenv("COS_DISC") != nullptr) {
-+        return;
++// Select only the build's revision-0 disc, including the CISO layout accepted by checkDisc.
++// checkDisc still performs the normal disc and game-data checks after selection.
++bool ps5DiscMatches(const char* path) {
++    FILE* file = fopen(path, "rb");
++    if (file == nullptr) {
++        return false;
 +    }
-+    for (const char* dir : {"/app0", "/mnt/usb0", "/mnt/usb1"}) {
-+        DIR* d = opendir(dir);
-+        if (d == nullptr) {
++    unsigned char header[0x20];
++    bool readable = fread(header, 1, sizeof(header), file) == sizeof(header);
++    if (readable && memcmp(header, "CISO", 4) == 0) {
++        readable = header[8] != 0 && fseek(file, 0x8000, SEEK_SET) == 0 &&
++                   fread(header, 1, sizeof(header), file) == sizeof(header);
++    }
++    fclose(file);
++    return readable && memcmp(header, COS_GAME_ID_STR, 6) == 0 && header[7] == 0 &&
++           header[0x1C] == 0xC2 && header[0x1D] == 0x33 && header[0x1E] == 0x9F &&
++           header[0x1F] == 0x3D;
++}
++
++bool ps5DiscFromFolder(const char* directory) {
++    DIR* folder = opendir(directory);
++    if (folder == nullptr) {
++        return false;
++    }
++    char found[512] = "";
++    while (const dirent* entry = readdir(folder)) {
++        const char* extension = strrchr(entry->d_name, '.');
++        if (extension == nullptr || (strcasecmp(extension, ".iso") != 0 &&
++                                    strcasecmp(extension, ".gcm") != 0 &&
++                                    strcasecmp(extension, ".ciso") != 0)) {
 +            continue;
 +        }
-+        char found[512] = "";
-+        while (const dirent* e = readdir(d)) {
-+            const char* dot = strrchr(e->d_name, '.');
-+            if (dot != nullptr && (strcasecmp(dot, ".iso") == 0 || strcasecmp(dot, ".gcm") == 0 ||
-+                                   strcasecmp(dot, ".ciso") == 0)) {
-+                snprintf(found, sizeof(found), "%s/%s", dir, e->d_name);
-+                break;
-+            }
-+        }
-+        closedir(d);
-+        if (found[0] != '\0') {
++        const int length = snprintf(found, sizeof(found), "%s/%s", directory, entry->d_name);
++        if (length >= 0 && (size_t)length < sizeof(found) && ps5DiscMatches(found)) {
++            closedir(folder);
 +            ps5Default("COS_DISC", found);
++            return true;
++        }
++    }
++    closedir(folder);
++    return false;
++}
++
++void ps5FindDisc() {
++    const char* selected = getenv("COS_DISC");
++    if (selected != nullptr && selected[0] != '\0' && access(selected, R_OK) == 0) {
++        return;
++    }
++    // A saved path may stop existing after an app update or USB renumbering.
++    unsetenv("COS_DISC");
++    // The disc lives outside the updateable app folder. Probe all USB numbers so hotplug and
++    // reboot renumbering do not require another binary or a hard-coded drive number.
++    char directory[128];
++    for (unsigned int drive = 0; drive < 8; ++drive) {
++        snprintf(directory, sizeof(directory), "/mnt/usb%u/Homebrew/WindWaker-Discs", drive);
++        if (ps5DiscFromFolder(directory)) {
++            return;
++        }
++    }
++    if (ps5DiscFromFolder("/app0")) {
++        return;
++    }
++    for (unsigned int drive = 0; drive < 8; ++drive) {
++        snprintf(directory, sizeof(directory), "/mnt/usb%u", drive);
++        if (ps5DiscFromFolder(directory)) {
 +            return;
 +        }
 +    }
@@ -833,7 +875,7 @@ index c3592e4..8f1e101 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +223,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +265,14 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -848,7 +890,7 @@ index c3592e4..8f1e101 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -260,6 +345,10 @@ int pc_env_audio(void) {
+@@ -260,6 +387,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -859,7 +901,7 @@ index c3592e4..8f1e101 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -284,6 +373,13 @@ void pc_exit(int code) {
+@@ -284,6 +415,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);

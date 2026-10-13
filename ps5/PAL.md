@@ -9,9 +9,9 @@ The PS5 port can now build against SwitchWaker's PAL implementation at
 | `PS5_GAME_VERSION=eur` | GZLP01 | build/game-eur |
 
 The region-specific runtime asset stubs contain names and sizes, not disc data.
-The player supplies their own matching `.iso`, `.gcm` or `.ciso`. For this PR,
-keep the image beside `eboot.bin` in `/data/homebrew/PPSA99309/`; the existing
-USB0/USB1 fallbacks remain as before.
+The player supplies their own matching `.iso`, `.gcm` or `.ciso`. The image can
+remain beside `eboot.bin` in `/data/homebrew/PPSA99309/` or use the external
+storage search described in PAL-USB.md.
 
 This proposal is based on PS5 v1.0.3 (`3c0f213f2d4c17606ac8637eda2c5da6cbcc73b0`),
 preserving its scene-transition, division-by-zero and arctangent-table fixes.
