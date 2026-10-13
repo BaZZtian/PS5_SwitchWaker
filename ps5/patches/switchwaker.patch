@@ -221,6 +221,32 @@ index 355f0e7..57070e1 100644
  }
  
  /* 8003EFA4-8003EFC8       .text fpcMtd_Create__FP20process_method_classPv */
+diff --git a/native/cmake/executable.cmake b/native/cmake/executable.cmake
+index 4ca6e9b..bbcd483 100644
+--- a/native/cmake/executable.cmake
++++ b/native/cmake/executable.cmake
+@@ -66,6 +66,7 @@ set_property(SOURCE "${COS_NATIVE_ROOT}/src/pc/runtime/pc_main.cpp" "${COS_NATIV
+ # into COS_SHOT images with COS_SHOT_IMGUI=1. Headers only: aurora_core links imgui.
+ if (TARGET imgui)
+     set(_pc_imgui_sources "${COS_NATIVE_ROOT}/src/pc/features/pc_overlay.cpp" "${COS_NATIVE_ROOT}/src/pc/features/pc_precompile.cpp"
++            "${COS_NATIVE_ROOT}/src/pc/runtime/pc_ps5_disc_ui.cpp"
+             "${COS_NATIVE_ROOT}/src/pc/features/pc_menu.cpp" "${COS_NATIVE_ROOT}/src/pc/harness/pc_shot.cpp")
+     set_property(SOURCE ${_pc_imgui_sources}
+             APPEND PROPERTY INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>")
+diff --git a/native/include/pc/pc_settings.h b/native/include/pc/pc_settings.h
+index 0518610..17239d0 100644
+--- a/native/include/pc/pc_settings.h
++++ b/native/include/pc/pc_settings.h
+@@ -99,6 +99,9 @@ const char* pc_settings_get_mode(const char* key, PcOperationMode mode);
+    -1 if the key is unknown or locked. */
+ int pc_settings_set_mode(const char* key, PcOperationMode mode, const char* value);
+ int pc_settings_set(const char* key, const char* value); /* for the current mode */
++/* Applies a selection before game startup and records it as the active restart baseline.
++   Returns 0 when saved, 1 when applied for this session but not saved, -1 when rejected. */
++int pc_settings_set_startup(const char* key, const char* value);
+ /* 1 if the environment fixed the value at start (the Mac's and Linux's; never on the Switch). */
+ int pc_settings_locked(const char* key);
+ /* 1 if a PC_SETTING_RESTART setting now differs from the value this run started with. */
 diff --git a/native/src/pc/features/pc_menu.cpp b/native/src/pc/features/pc_menu.cpp
 index 821c10b..40bbb4d 100644
 --- a/native/src/pc/features/pc_menu.cpp
@@ -318,7 +344,7 @@ index 43728f2..b3ce94c 100644
              // Turned on a moment ago (options menu): nothing measured yet.
              ImGui::TextUnformatted("-- fps");
 diff --git a/native/src/pc/features/pc_settings.cpp b/native/src/pc/features/pc_settings.cpp
-index cfa4172..02bf797 100644
+index cfa4172..82b6f86 100644
 --- a/native/src/pc/features/pc_settings.cpp
 +++ b/native/src/pc/features/pc_settings.cpp
 @@ -93,6 +93,9 @@ void computePath() {
@@ -357,6 +383,31 @@ index cfa4172..02bf797 100644
      s.lastMode = queryMode();
      s.haveLastMode = true;
      // Every value the file gives that the environment does not: into the environment, for code
+@@ -596,6 +617,24 @@ int pc_settings_set(const char* key, const char* value) {
+     return pc_settings_set_mode(key, st().lastMode, value);
+ }
+ 
++int pc_settings_set_startup(const char* key, const char* value) {
++    State& s = st();
++    Entry* e = find(key);
++    if (e == nullptr || !e->registered || isLocked(key) || value == nullptr) {
++        return -1;
++    }
++    const std::string before = valueFor(key, s.lastMode);
++    const int slot = perMode(*e) ? 1 + s.lastMode : 0;
++    e->stored[slot] = value;
++    e->has[slot] = true;
++    const bool saved = (e->desc.flags & PC_SETTING_NO_SAVE) || writeFile();
++    e->bootValue = valueFor(key, s.lastMode);
++    if (e->bootValue != before) {
++        notify(*e, key, e->bootValue);
++    }
++    return saved ? 0 : 1;
++}
++
+ int pc_settings_locked(const char* key) {
+     return key != nullptr && isLocked(key) ? 1 : 0;
+ }
 diff --git a/native/src/pc/harness/pc_shot.cpp b/native/src/pc/harness/pc_shot.cpp
 index aef4e19..c2c3de0 100644
 --- a/native/src/pc/harness/pc_shot.cpp
@@ -773,7 +824,7 @@ index 90cc87c..91c564d 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index c3592e4..ac51beb 100644
+index c3592e4..5724f50 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
 @@ -15,6 +15,12 @@
@@ -789,7 +840,7 @@ index c3592e4..ac51beb 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +134,204 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +134,207 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -935,19 +986,22 @@ index c3592e4..ac51beb 100644
 +}
 +} // namespace
 +
++std::vector<std::string> ps5AvailableDiscs() { return ps5DiscPaths(); }
++bool ps5CompatibleDisc(const char* path) { return ps5DiscMatches(path); }
++
 +void ps5RegisterDiscSetting() {
-+    // Choices and their strings remain valid for the settings registry's lifetime.
-+    static const auto paths = ps5DiscPaths();
-+    static const auto choices = [] {
-+        std::vector<PcSettingChoice> result;
-+        result.reserve(paths.size() + 1);
-+        result.push_back({"auto", "Automático", "Automatic"});
-+        for (const auto& path : paths) {
-+            result.push_back({path.c_str(), path.c_str(), path.c_str()});
-+        }
-+        return result;
-+    }();
-+    static const PcSettingDesc desc = {
++    // Refresh before menu initialization after the startup browser chooses another folder.
++    // Stored vectors keep the registry's string pointers valid until the next refresh.
++    static std::vector<std::string> paths;
++    static std::vector<PcSettingChoice> choices;
++    paths = ps5DiscPaths();
++    choices.clear();
++    choices.reserve(paths.size() + 1);
++    choices.push_back({"auto", "Automático", "Automatic"});
++    for (const auto& path : paths) {
++        choices.push_back({path.c_str(), path.c_str(), path.c_str()});
++    }
++    const PcSettingDesc desc = {
 +        "COS_DISC_PATH", "Imagen de disco",
 +        "Elige una imagen detectada con izquierda/derecha. Se aplica al reiniciar. "
 +        "Para otra carpeta, configura COS_DISC_DIR en /data/windwaker/settings.ini.",
@@ -994,7 +1048,7 @@ index c3592e4..ac51beb 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +344,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +347,14 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -1009,7 +1063,22 @@ index c3592e4..ac51beb 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -260,6 +466,10 @@ int pc_env_audio(void) {
+@@ -240,12 +449,14 @@ void pc_harness_init(int argc, char* argv[]) {
+     // Smoke tests that run before any SDK call (static-init, the harness self-tests) end here.
+     runEarlySmoke();
+ 
++#if !defined(__PROSPERO__)
+     if (checkDisc() != 0) {
+         exitDisc(); // the message on screen on the Switch, then PC_EXIT_DISC
+     }
+ 
+     // Smoke tests that need the disc but not the game (disc-ls) end here.
+     runDiscSmoke();
++#endif
+ }
+ 
+ const char* pc_env_disc(void) {
+@@ -260,6 +471,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -1020,7 +1089,7 @@ index c3592e4..ac51beb 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -284,6 +494,13 @@ void pc_exit(int code) {
+@@ -284,6 +499,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);
@@ -1035,7 +1104,7 @@ index c3592e4..ac51beb 100644
      _Exit(code);
  #endif
 diff --git a/native/src/pc/runtime/pc_main.cpp b/native/src/pc/runtime/pc_main.cpp
-index b3689d7..f832436 100644
+index b3689d7..062243c 100644
 --- a/native/src/pc/runtime/pc_main.cpp
 +++ b/native/src/pc/runtime/pc_main.cpp
 @@ -43,6 +43,8 @@
@@ -1047,7 +1116,18 @@ index b3689d7..f832436 100644
  #if defined(__SWITCH__)
  #include "JSystem/JAudio/JASAudioThread.h"
  #include "m_Do/m_Do_dvd_thread.h"
-@@ -233,7 +235,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -56,6 +58,10 @@ extern "C" void VISetFrameBufferScale(float scale);
+ 
+ namespace pc {
+ 
++#if defined(__PROSPERO__)
++void ps5DiscStartupScreen();
++#endif
++
+ namespace {
+ 
+ constexpr uint32_t kMem1Size = 256u * 1024 * 1024; // decision H5
+@@ -233,7 +239,25 @@ void pc_aurora_init(int argc, char* argv[]) {
      config.windowWidth = (int)(480 * 3 / 2 * pc_aspect_ratio() + 0.5f);
      config.windowHeight = 480 * 3 / 2;
      config.logLevel = LOG_INFO;
@@ -1074,7 +1154,20 @@ index b3689d7..f832436 100644
      config.mem1Size = kMem1Size;
      config.mem2Size = kMem2Size;
      config.blockingPipelines = gConfig.syncPipelines;
-@@ -250,6 +270,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -242,6 +266,12 @@ void pc_aurora_init(int argc, char* argv[]) {
+         writef(STDERR_FILENO, "[cos] aurora_initialize returned no window\n");
+         pc_exit(PC_EXIT_USAGE);
+     }
++#if defined(__PROSPERO__)
++    // A graphics window exists before any disc-dependent initialization. Missing images
++    // stay in this browser rather than exiting before the in-game options are available.
++    ps5DiscStartupScreen();
++    runDiscSmoke();
++#endif
+ #if defined(__SWITCH__)
+     // Name Aurora's render worker for its CPU time in the perf-switch lines (thread_wrap.c).
+     aurora::gfx::render_worker::enqueue_work([] {
+@@ -250,6 +280,25 @@ void pc_aurora_init(int argc, char* argv[]) {
          }
      });
  #endif
@@ -1100,3 +1193,280 @@ index b3689d7..f832436 100644
      applyFrameBufferScale(info.windowSize);
      if (pc_aspect_wide()) {
          // The game draws an anamorphic picture into the 640x480 EFB (pc_aspect.h): Aurora presents
+diff --git a/native/src/pc/runtime/pc_ps5_disc_browser.h b/native/src/pc/runtime/pc_ps5_disc_browser.h
+new file mode 100644
+index 0000000..af438b7
+--- /dev/null
++++ b/native/src/pc/runtime/pc_ps5_disc_browser.h
+@@ -0,0 +1,103 @@
++// PS5 startup disc browser: filesystem navigation without game or graphics dependencies.
++#ifndef PC_PS5_DISC_BROWSER_H
++#define PC_PS5_DISC_BROWSER_H
++#include <algorithm>
++#include <cstring>
++#include <dirent.h>
++#include <string>
++#include <strings.h>
++#include <sys/stat.h>
++#include <vector>
++
++namespace pc {
++struct Ps5DiscBrowser {
++    enum class Kind { Directory, Image, Browse, Rescan };
++    struct Row { Kind kind; std::string name, path; };
++    using Discover = std::vector<std::string>(*)();
++    using Matches = bool(*)(const char*);
++    Discover discover;
++    Matches matches;
++    std::vector<Row> rows;
++    std::string folder, root, error;
++    int selected = 0;
++    bool detected = true;
++    bool truncated = false;
++    explicit Ps5DiscBrowser(Discover scan, Matches check) : discover(scan), matches(check) { refresh(); }
++    static bool directory(const std::string& path) {
++        DIR* dir = opendir(path.c_str());
++        if (!dir) return false;
++        closedir(dir);
++        return true;
++    }
++    void refresh() {
++        rows.clear();
++        truncated = false;
++        error.clear();
++        selected = 0;
++        if (detected) {
++            for (const auto& path : discover()) rows.push_back({Kind::Image, path, path});
++            rows.push_back({Kind::Browse, "", ""});
++        } else if (folder.empty()) {
++            for (unsigned drive = 0; drive < 8; ++drive) {
++                const auto path = "/mnt/usb" + std::to_string(drive);
++                if (directory(path)) rows.push_back({Kind::Directory, "USB " + std::to_string(drive), path});
++            }
++            for (const char* path : {"/mnt/ext0", "/mnt/ext1", "/app0", "/data"}) {
++                if (directory(path)) rows.push_back({Kind::Directory, path, path});
++            }
++        } else {
++            DIR* dir = opendir(folder.c_str());
++            if (!dir) {
++                error = "directory";
++            } else {
++                while (const auto* item = readdir(dir)) {
++                    if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) continue;
++                    const std::string path = folder + "/" + item->d_name;
++                    struct stat status;
++                    if (stat(path.c_str(), &status) != 0) continue;
++                    const char* ext = strrchr(item->d_name, '.');
++                    if (S_ISDIR(status.st_mode)) rows.push_back({Kind::Directory, item->d_name, path});
++                    else if (S_ISREG(status.st_mode) && ext &&
++                             (!strcasecmp(ext, ".iso") || !strcasecmp(ext, ".gcm") || !strcasecmp(ext, ".ciso"))) {
++                        rows.push_back({Kind::Image, item->d_name, path});
++                    }
++                    if (rows.size() == 512) { truncated = true; break; }
++                }
++                closedir(dir);
++                std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
++                    if (a.kind != b.kind) return a.kind == Kind::Directory;
++                    return a.name < b.name;
++                });
++            }
++        }
++        rows.push_back({Kind::Rescan, "", ""});
++    }
++    void move(int direction) {
++        if (!rows.empty()) selected = (selected + direction + (int)rows.size()) % (int)rows.size();
++    }
++    std::string activate() {
++        if (selected < 0 || selected >= (int)rows.size()) return {};
++        const Row row = rows[selected];
++        if (row.kind == Kind::Rescan) refresh();
++        else if (row.kind == Kind::Browse) { detected = false; folder.clear(); root.clear(); refresh(); }
++        else if (row.kind == Kind::Directory) {
++            if (!directory(row.path)) { error = "directory"; return {}; }
++            if (folder.empty()) root = row.path;
++            folder = row.path;
++            refresh();
++        } else if (matches(row.path.c_str())) {
++            return row.path;
++        } else error = "image";
++        return {};
++    }
++    void back() {
++        if (detected) return;
++        if (folder.empty()) { detected = true; refresh(); }
++        else {
++            folder = folder == root ? "" : folder.substr(0, folder.find_last_of('/'));
++            refresh();
++        }
++    }
++};
++} // namespace pc
++#endif
+diff --git a/native/src/pc/runtime/pc_ps5_disc_ui.cpp b/native/src/pc/runtime/pc_ps5_disc_ui.cpp
+new file mode 100644
+index 0000000..cf38eb0
+--- /dev/null
++++ b/native/src/pc/runtime/pc_ps5_disc_ui.cpp
+@@ -0,0 +1,162 @@
++// PS5 disc selection before DVD, runtime assets and game initialization.
++#if defined(__PROSPERO__)
++#include "pc_internal.h"
++#include "pc/pc_game_id.h"
++#include "pc/pc_settings.h"
++#include "pc_ps5_disc_browser.h"
++#include <aurora/aurora.h>
++#include <aurora/event.h>
++#include <SDL3/SDL.h>
++#include <imgui.h>
++#include <cstdlib>
++#include <unistd.h>
++
++namespace pc {
++std::vector<std::string> ps5AvailableDiscs();
++bool ps5CompatibleDisc(const char* path);
++void ps5RegisterDiscSetting();
++
++namespace {
++enum { Up = 1, Down = 2, Confirm = 4, Back = 8 };
++struct BrowserInput {
++    SDL_Gamepad* pad = nullptr;
++    bool owned = false;
++    ~BrowserInput() { if (owned && pad) SDL_CloseGamepad(pad); }
++    unsigned read() {
++        if (pad && !SDL_GamepadConnected(pad)) {
++            if (owned) SDL_CloseGamepad(pad);
++            pad = nullptr;
++            owned = false;
++        }
++        if (!pad) {
++            int count = 0;
++            SDL_JoystickID* ids = SDL_GetGamepads(&count);
++            if (ids && count > 0) {
++                pad = SDL_GetGamepadFromID(ids[0]);
++                if (!pad) { pad = SDL_OpenGamepad(ids[0]); owned = pad != nullptr; }
++            }
++            SDL_free(ids);
++        }
++        unsigned keys = 0;
++        if (pad) {
++            const int y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP) || y < -20000) keys |= Up;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) || y > 20000) keys |= Down;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) keys |= Confirm;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST)) keys |= Back;
++        }
++        int count = 0;
++        const bool* key = SDL_GetKeyboardState(&count);
++        if (key && count > SDL_SCANCODE_DOWN) {
++            if (key[SDL_SCANCODE_UP]) keys |= Up;
++            if (key[SDL_SCANCODE_DOWN]) keys |= Down;
++            if (key[SDL_SCANCODE_RETURN]) keys |= Confirm;
++            if (key[SDL_SCANCODE_ESCAPE]) keys |= Back;
++        }
++        return keys;
++    }
++};
++}
++
++void ps5DiscStartupScreen() {
++    if (gConfig.smoke || gConfig.milestone) {
++        if (checkDisc() != 0) exitDisc();
++        return;
++    }
++    Ps5DiscBrowser browser(ps5AvailableDiscs, ps5CompatibleDisc);
++    for (size_t i = 0; i < browser.rows.size(); ++i) {
++        if (gConfig.disc && browser.rows[i].path == gConfig.disc) browser.selected = (int)i;
++    }
++    const bool german = !strcmp(pc_settings_get("COS_GAME_LANGUAGE"), "de");
++    const auto text = [&](const char* de, const char* en) { return german ? de : en; };
++    BrowserInput input;
++    unsigned held = ~0u; // The opening button must be released before it can launch a title.
++    bool unsaved = false;
++    std::string chosen;
++    writef(STDERR_FILENO, "[cos] disc browser: ready before disc initialization\n");
++    for (;;) {
++        for (const AuroraEvent* event = aurora_update(); event && event->type != AURORA_NONE; ++event) {
++            if (event->type == AURORA_EXIT) pc_exit(PC_EXIT_REACHED);
++        }
++        watchdogPulse();
++        const unsigned current = input.read();
++        const unsigned pressed = current & ~held;
++        held = current;
++        if (pressed & (Up | Down | Back)) { unsaved = false; chosen.clear(); }
++        if (pressed & Up) browser.move(-1);
++        if (pressed & Down) browser.move(1);
++        if (pressed & Back) browser.back();
++        bool activate = (pressed & Confirm) != 0;
++        if (aurora_begin_frame()) {
++            const ImVec2 size = ImGui::GetIO().DisplaySize;
++            ImGui::SetNextWindowPos(ImVec2(0, 0));
++            ImGui::SetNextWindowSize(size);
++            if (ImGui::Begin("##windwaker_disc_browser", nullptr,
++                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings)) {
++                ImGui::SetWindowFontScale(size.y >= 1000 ? 1.6f : 1.25f);
++                ImGui::TextUnformatted("Wind Waker");
++                ImGui::TextWrapped("%s: " COS_GAME_ID_STR " / %s 0", PC_GAME_REGION_EN,
++                                   text("Revision", "revision"));
++                ImGui::Separator();
++                ImGui::TextWrapped("%s", text("ISO auswählen und mit X starten. Kreis: zurück.",
++                                              "Select a disc image and press X to start. Circle: back."));
++                if (browser.detected && browser.rows.size() == 2) {
++                    ImGui::TextWrapped("%s", text("Keine passende ISO gefunden. Durchsuche einen Ordner oder suche erneut.",
++                                                  "No compatible image found. Browse a folder or rescan."));
++                }
++                if (!browser.folder.empty()) ImGui::TextWrapped("%s", browser.folder.c_str());
++                if (!browser.detected && browser.folder.empty()) ImGui::TextWrapped("%s", text("Wenn die HDD hier fehlt, ist sie für diese App nicht erreichbar. Verbinde sie erneut und suche noch einmal.",
++                                                                                              "If the HDD is missing here, this app cannot access it. Reconnect it and rescan."));
++                if (browser.error == "directory") ImGui::TextWrapped("%s", text("Ordner nicht lesbar. Das Laufwerk muss für diese App eingebunden sein.",
++                                                                                 "Folder is unreadable. The drive must be mounted into this app."));
++                if (browser.error == "image") ImGui::TextWrapped("%s", text("Datei nicht lesbar oder nicht passend für diesen Build. Erwartet: " COS_GAME_ID_STR " Revision 0.",
++                                                                             "Image is unreadable or incompatible. Expected: " COS_GAME_ID_STR " revision 0."));
++                if (unsaved) ImGui::TextWrapped("%s", text("Auswahl gilt für diesen Start, konnte aber nicht gespeichert werden. X: trotzdem starten.",
++                                                                       "Selection applies to this session but could not be saved. X: start anyway."));
++                if (browser.truncated) ImGui::TextWrapped("%s", text("Anzeige auf 512 Einträge begrenzt.", "Showing at most 512 entries."));
++                ImGui::BeginChild("images", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 2));
++                for (size_t i = 0; i < browser.rows.size(); ++i) {
++                    const auto& row = browser.rows[i];
++                    const char* label = row.kind == Ps5DiscBrowser::Kind::Browse ? text("Ordner durchsuchen", "Browse folders") :
++                                        row.kind == Ps5DiscBrowser::Kind::Rescan ? text("Erneut suchen", "Rescan") : row.name.c_str();
++                    ImGui::PushID((int)i);
++                    if (ImGui::Selectable(label, browser.selected == (int)i)) {
++                        if (browser.selected != (int)i) { unsaved = false; chosen.clear(); }
++                        browser.selected = (int)i;
++                        activate = true;
++                    }
++                    if (browser.selected == (int)i && (pressed & (Up | Down))) ImGui::SetScrollHereY();
++                    ImGui::PopID();
++                }
++                ImGui::EndChild();
++                ImGui::TextUnformatted(text("X: auswählen/starten   Kreis: zurück   Steuerkreuz: navigieren",
++                                           "X: select/start   Circle: back   D-pad: navigate"));
++            }
++            ImGui::End();
++            aurora_end_frame();
++        }
++        if (activate) {
++            if (unsaved && !chosen.empty()) {
++                if (checkDisc() == 0) return;
++                unsaved = false;
++                browser.error = "image";
++            } else {
++                chosen = browser.activate();
++                if (!chosen.empty()) {
++                    setenv("COS_DISC", chosen.c_str(), 1);
++                    gConfig.disc = getenv("COS_DISC");
++                    if (checkDisc() != 0) { browser.error = "image"; chosen.clear(); }
++                    else {
++                        const int stored = pc_settings_set_startup("COS_DISC_PATH", chosen.c_str());
++                        ps5RegisterDiscSetting();
++                        if (stored == 0) return;
++                        unsaved = true;
++                    }
++                }
++            }
++        }
++        SDL_Delay(16);
++    }
++}
++} // namespace pc
++#endif

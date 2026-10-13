@@ -4,7 +4,21 @@ The PS5 build accepts its matching revision-0 GameCube disc: GZLP01 for the
 European build or GZLE01 for the USA build. Supported formats are `.iso`,
 `.gcm` and `.ciso`, with case-insensitive extensions.
 
-## Options menu
+## Startup selection
+
+The PS5 opens a controller-operated disc browser before checking or opening the
+game disc. It stays open when no compatible image is available. Use the D-pad
+or left stick to navigate, Cross to select an image or folder, and Circle to
+go back. Browse USB0-7, expansion storage, the app folder or `/data`, and rescan
+after connecting a drive. Images with an incompatible header stay in the browser
+with an error message; they do not close the app.
+
+A compatible selection is saved and starts the game in the same session. If
+the settings file is not writable, the screen explains that the choice applies
+only to this session and requires confirmation before starting unsaved. Missing
+sandbox mounts cannot be fixed by the browser: the loader must expose the drive.
+
+## In-game options menu
 
 Press the touchpad to open options, then choose **Debug → Disc image**. Left
 and right select **Automatic** or a detected compatible image. Close the title
@@ -63,6 +77,7 @@ the external image and settings remain intact.
 ```sh
 python3 ps5/tests/test-disc-discovery.py --cxx clang++
 python3 ps5/tests/test-disc-settings.py --core vendor/switchwaker --cxx clang++
+python3 ps5/tests/test-disc-startup.py --core vendor/switchwaker --cxx clang++
 python3 ps5/tests/test-pal-defaults.py --cxx clang++
 ```
 

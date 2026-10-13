@@ -130,6 +130,12 @@ int main(int argc, char** argv) {
     } else if (scenario == "denied") {
         require(std::string(pc_settings_get("COS_DISC_PATH")) == "auto",
                 "an access error is not treated as a missing persistent file");
+    } else if (scenario == "startup") {
+        require(pc_settings_set_startup("COS_DISC_PATH", "/mnt/usb6/disc.iso") == 0,
+                "startup choice is saved");
+        require(!pc_settings_restart_pending("COS_DISC_PATH"), "startup choice becomes the active baseline");
+        require(pc_settings_set("COS_DISC_PATH", "auto") == 0 && pc_settings_restart_pending("COS_DISC_PATH"),
+                "later in-game choices still require restart");
     } else {
         require(false, "known scenario");
     }
@@ -163,7 +169,7 @@ def main():
             "-I", str(work), str(work / "settings.cpp"), str(work / "harness.cpp"),
             "-o", str(binary)], check=True)
         env = {k: v for k, v in os.environ.items() if not k.startswith("COS_")}
-        for scenario in ("fresh", "restored", "legacy", "existing", "override", "denied", "write-failure"):
+        for scenario in ("fresh", "restored", "legacy", "existing", "override", "denied", "write-failure", "startup"):
             root = work / ("fresh" if scenario == "restored" else scenario)
             root.mkdir(exist_ok=True)
             def text_file(path, content):
