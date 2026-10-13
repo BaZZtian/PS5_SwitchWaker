@@ -1,3 +1,53 @@
+diff --git a/game/src/SSystem/SComponent/c_lib.cpp b/game/src/SSystem/SComponent/c_lib.cpp
+index 0f1f94f..02eaf89 100644
+--- a/game/src/SSystem/SComponent/c_lib.cpp
++++ b/game/src/SSystem/SComponent/c_lib.cpp
+@@ -8,6 +8,18 @@
+ #include "SSystem/SComponent/c_math.h"
+ #include "dolphin/mtx/mtxvec.h"
+ 
++#if TARGET_PC
++// A scale of 0 reaches these (the first cLib_addCalcAngleS2 of d_a_btd.cpp: m5E92 is still 0). The
++// GameCube's divw and ARM's sdiv give a quotient without a fault, x86-64's idiv raises SIGFPE: the
++// quotient is 0 here, as on ARM.
++static inline s32 cLib_div(s32 a, s32 b) {
++    return b != 0 ? a / b : 0;
++}
++#define CLIB_DIV(a, b) cLib_div((a), (b))
++#else
++#define CLIB_DIV(a, b) ((a) / (b))
++#endif
++
+ /* 802528A4-802528C4       .text cLib_memCpy__FPvPCvUl */
+ void cLib_memCpy(void* dst, const void* src, unsigned long size) {
+     memcpy(dst, src, size);
+@@ -160,7 +172,7 @@ void cLib_addCalcPosXZ2(cXyz* pValue, cXyz const& target, f32 scale, f32 maxStep
+ s16 cLib_addCalcAngleS(s16* pValue, s16 target, s16 scale, s16 maxStep, s16 minStep) {
+     s16 diff = target - *pValue;
+     if (*pValue != target) {
+-        s16 step = (diff) / scale;
++        s16 step = CLIB_DIV(diff, scale);
+         if (step > minStep || step < -minStep) {
+             if (step > maxStep) {
+                 step = maxStep;
+@@ -191,7 +203,7 @@ s16 cLib_addCalcAngleS(s16* pValue, s16 target, s16 scale, s16 maxStep, s16 minS
+ /* 80253270-802532C4       .text cLib_addCalcAngleS2__FPssss */
+ void cLib_addCalcAngleS2(s16* pValue, s16 target, s16 scale, s16 maxStep) {
+     s16 diff = target - *pValue;
+-    s16 step = diff / scale;
++    s16 step = CLIB_DIV(diff, scale);
+     if (step > maxStep) {
+         *pValue += maxStep;
+     } else if (step < -maxStep) {
+@@ -205,7 +217,7 @@ void cLib_addCalcAngleS2(s16* pValue, s16 target, s16 scale, s16 maxStep) {
+ s32 cLib_addCalcAngleL(s32* pValue, s32 target, s32 scale, s32 maxStep, s32 minStep) {
+     s32 diff = target - *pValue;
+     if (*pValue != target) {
+-        scale = (diff) / scale;
++        scale = CLIB_DIV(diff, scale);
+         if (scale > minStep || scale < -minStep) {
+             if (scale > maxStep) {
+                 scale = maxStep;
 diff --git a/game/src/d/d_meter.cpp b/game/src/d/d_meter.cpp
 index 05ecca5..292ce89 100644
 --- a/game/src/d/d_meter.cpp
@@ -343,11 +393,90 @@ index aeba943..b972772 100644
      if (!sChecked) {
          sChecked = true;
          if (gConfig.smoke == nullptr || strcmp(gConfig.smoke, "event-sweep") != 0) {
+diff --git a/native/src/pc/harness/sweeps/pc_save_sweep.cpp b/native/src/pc/harness/sweeps/pc_save_sweep.cpp
+index 9a9f11f..6720a15 100644
+--- a/native/src/pc/harness/sweeps/pc_save_sweep.cpp
++++ b/native/src/pc/harness/sweeps/pc_save_sweep.cpp
+@@ -110,6 +110,7 @@ enum State {
+     kTitle,     // save-load: START until the name scene
+     kName,      // A until the PLAY scene
+     kPlay,      // the PLAY scene: wait for the player in the return room
++    kWalk,      // COS_SAVE_LOAD_WALK: forward from the loaded save
+     kDone,
+ };
+ 
+@@ -403,6 +404,8 @@ void compareLoaded() {
+            slot + 1);
+ }
+ 
++unsigned int sWalkFrames = 0;
++
+ void loadFrame(unsigned int frames) {
+     ++sSince;
+     if (sState == kTitle) {
+@@ -463,8 +466,34 @@ void loadFrame(unsigned int frames) {
+         }
+         writef(STDERR_FILENO, "[cos] save-load: PASS loaded %s room %d point %d\n", sReturnName, sReturnRoom,
+                sReturnPoint);
++        // COS_SAVE_LOAD_WALK=<frames>: go on from the loaded save, the stick held forward and A
++        // tapped (through the door ahead), to reproduce a fault a player reports after a save.
++        const char* walk = getenv("COS_SAVE_LOAD_WALK");
++        if (walk != nullptr && atoi(walk) > 0) {
++            sWalkFrames = (unsigned int)atoi(walk);
++            sState = kWalk;
++            sSince = 0;
++            return;
++        }
+         pc_exit(PC_EXIT_REACHED);
+     }
++    if (sState == kWalk) {
++        fopAc_ac_c* player = dComIfGp_getPlayer(0);
++        setDrivenPad(true, sSince % kAEvery < 2 ? PAD_BUTTON_A : 0, 0, 127);
++        if (sSince % 60 == 0) {
++            if (player != nullptr) {
++                writef(STDERR_FILENO, "[cos] save-load: walk %u: %s room %d at (%.0f, %.0f, %.0f)\n", sSince,
++                       dComIfGp_getStartStageName(), (int)fopAcM_GetRoomNo(player), player->current.pos.x,
++                       player->current.pos.y, player->current.pos.z);
++            } else {
++                writef(STDERR_FILENO, "[cos] save-load: walk %u: no player\n", sSince);
++            }
++        }
++        if (sSince >= sWalkFrames) {
++            writef(STDERR_FILENO, "[cos] save-load: walk done\n");
++            pc_exit(PC_EXIT_REACHED);
++        }
++    }
+ }
+ 
+ } // namespace
 diff --git a/native/src/pc/runtime/pc_crash.cpp b/native/src/pc/runtime/pc_crash.cpp
-index 094f649..7adb0a1 100644
+index 094f649..08447d8 100644
 --- a/native/src/pc/runtime/pc_crash.cpp
 +++ b/native/src/pc/runtime/pc_crash.cpp
-@@ -221,6 +221,9 @@ void writeFrames(int fd, void** frames, int n, int exact) {
+@@ -36,6 +36,10 @@
+ #include <signal.h>
+ #endif
+ 
++#if defined(__PROSPERO__)
++#include <cstdlib>
++#include <ucontext.h>
++#endif
+ #if defined(__APPLE__)
+ #include <mach-o/dyld.h>
+ #include <mach/mach.h>
+@@ -45,6 +49,11 @@
+ #include <sys/uio.h>
+ #endif
+ 
++#if defined(__PROSPERO__)
++// The function whose address gives the title's load offset (ps5/tools/make-div-table.py).
++extern "C" __attribute__((noinline, used)) void pc_div_table_anchor() {}
++#endif
++
+ namespace pc {
+ 
+ namespace {
+@@ -221,6 +230,9 @@ void writeFrames(int fd, void** frames, int n, int exact) {
  void writeThreadName(int fd) {
  #if defined(__SWITCH__)
      writef(fd, "[cos] thread %llu\n", (unsigned long long)cos_switch_thread_id());
@@ -357,7 +486,7 @@ index 094f649..7adb0a1 100644
  #else
      char name[64] = "";
      pthread_getname_np(pthread_self(), name, sizeof(name));
-@@ -338,6 +341,14 @@ void writef(int fd, const char* fmt, ...) {
+@@ -338,6 +350,14 @@ void writef(int fd, const char* fmt, ...) {
      if (len >= (int)sizeof(buf)) {
          len = sizeof(buf) - 1;
      }
@@ -372,14 +501,130 @@ index 094f649..7adb0a1 100644
      const char* p = buf;
      while (len > 0) {
          ssize_t w = write(fd, p, (size_t)len);
-@@ -399,6 +410,10 @@ void installCrashHandler() {
+@@ -394,11 +414,126 @@ void traceLastResource(char* out, size_t size) {
+     out[n - 1] = '\0';
+ }
+ 
++#if defined(__PROSPERO__)
++// The game divides integers by zero in places (the first cLib_addCalcAngleS2 of d_a_btd.cpp, before
++// c_lib.cpp guarded it): the GameCube's divw and ARM's sdiv give a quotient without a fault, x86-64's
++// div/idiv raises SIGFPE. This finishes the instruction as ARM does (quotient 0, remainder the
++// dividend) and goes on, with a log line for the first faults. Anything it cannot read as a
++// div/idiv gets the default action back, so the console still writes its crash record.
++
++// The console's code is execute-only, so the handler cannot read the instruction to learn its
++// length: the title ships a table of its div/idiv instructions made after the link
++// (ps5/tools/make-div-table.py, res/div-table.bin: ELF address, length, operand size).
++#pragma pack(push, 1)
++struct DivEntry {
++    uint32_t address;
++    uint8_t length;
++    uint8_t size;
++};
++#pragma pack(pop)
++DivEntry* sDivTable = nullptr;
++uint32_t sDivCount = 0;
++uintptr_t sDivBase = 0; // the load address of ELF address 0
++
++void loadDivTable() {
++    const int fd = open("/app0/res/div-table.bin", O_RDONLY);
++    if (fd < 0) {
++        writef(STDERR_FILENO, "[cos] no res/div-table.bin: an integer division by zero is a crash\n");
++        return;
++    }
++    struct {
++        char magic[8];
++        uint64_t anchor;
++        uint32_t count;
++    } __attribute__((packed)) head;
++    if (read(fd, &head, sizeof(head)) == (ssize_t)sizeof(head) && memcmp(head.magic, "COSDIV1", 8) == 0 &&
++        head.count > 0 && head.count < 4000000) {
++        const size_t bytes = (size_t)head.count * sizeof(DivEntry);
++        DivEntry* table = static_cast<DivEntry*>(malloc(bytes));
++        size_t got = 0;
++        while (table != nullptr && got < bytes) {
++            const ssize_t n = read(fd, reinterpret_cast<char*>(table) + got, bytes - got);
++            if (n <= 0) {
++                break;
++            }
++            got += (size_t)n;
++        }
++        if (table != nullptr && got == bytes) {
++            sDivBase = reinterpret_cast<uintptr_t>(&pc_div_table_anchor) - (uintptr_t)head.anchor;
++            sDivCount = head.count;
++            sDivTable = table;
++        }
++    }
++    close(fd);
++    writef(STDERR_FILENO, "[cos] division table: %u instruction(s), load offset 0x%llx\n", sDivCount,
++           (unsigned long long)sDivBase);
++}
++
++void divFaultHandler(int sig, siginfo_t* info, void* context) {
++    (void)info;
++    ucontext_t* uc = static_cast<ucontext_t*>(context);
++    const uintptr_t rip = (uintptr_t)uc->uc_mcontext.mc_rip;
++    const uint64_t address = rip - sDivBase;
++    int length = 0, size = 0;
++    for (uint32_t lo = 0, hi = sDivCount; lo < hi;) {
++        const uint32_t mid = lo + (hi - lo) / 2;
++        if (sDivTable[mid].address == address) {
++            length = sDivTable[mid].length;
++            size = sDivTable[mid].size;
++            break;
++        }
++        if (sDivTable[mid].address < address) {
++            lo = mid + 1;
++        } else {
++            hi = mid;
++        }
++    }
++    if (length == 0) {
++        signal(sig, SIG_DFL); // not a listed division: it faults again, into the console's record
++        return;
++    }
++    static unsigned int sCount = 0;
++    if (sCount++ < 16) {
++        writef(STDERR_FILENO, "[cos] integer division fault at ELF address 0x%llx (%d-byte operand): quotient 0, going on\n",
++               (unsigned long long)address, size);
++    }
++    uint64_t& rax = reinterpret_cast<uint64_t&>(uc->uc_mcontext.mc_rax);
++    uint64_t& rdx = reinterpret_cast<uint64_t&>(uc->uc_mcontext.mc_rdx);
++    switch (size) {
++    case 1: rax = (rax & ~0xFFFFull) | ((rax & 0xFF) << 8); break; // AL = 0, AH = the dividend's low byte
++    case 2: rdx = (rdx & ~0xFFFFull) | (rax & 0xFFFF); rax &= ~0xFFFFull; break;
++    case 4: rdx = rax & 0xFFFFFFFFull; rax = 0; break;
++    default: rdx = rax; rax = 0; break;
++    }
++    uc->uc_mcontext.mc_rip += length;
++}
++#endif
++
+ void installCrashHandler() {
+ #if defined(__SWITCH__)
      // libnx's exception handler (switch/native/source/cos_switch.cpp) reports crashes; it adds
      // this state line.
      cos_switch_set_crash_state_writer(writeState);
 +#elif defined(__PROSPERO__)
-+    // PlayStation 5: no handler. The console writes a crash record of its own to klog (registers
-+    // and a frame-pointer walk), which the port's ps5/tools/run.sh symbolises; a handler here
-+    // would take the signal first and exit without one.
++    // PlayStation 5: no crash handler. The console writes a crash record of its own to klog
++    // (registers and a frame-pointer walk), which the port's ps5/tools/run.sh symbolises; a handler
++    // here would take the signal first and exit without one. SIGFPE alone is handled, to finish an
++    // integer division by zero as the other machines do (divFaultHandler).
++    {
++        loadDivTable();
++        struct sigaction sa = {};
++        sa.sa_sigaction = divFaultHandler;
++        sa.sa_flags = SA_SIGINFO;
++        sigemptyset(&sa.sa_mask);
++        sigaction(SIGFPE, &sa, nullptr);
++        const char* test = getenv("COS_DIV_TEST");
++        if (test != nullptr && atoi(test) > 0) {
++            volatile int a = 1234, b = 0;
++            volatile int q = a / b;
++            volatile int r = a % b;
++            writef(STDERR_FILENO, "[cos] div-test: 1234 / 0 = %d, 1234 %% 0 = %d\n", (int)q, (int)r);
++        }
++    }
  #else
      // Alternate signal stack for this (the main) thread, so a stack overflow still reports.
      static char sAltStack[256 * 1024];
