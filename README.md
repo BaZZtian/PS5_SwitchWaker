@@ -24,9 +24,9 @@ symbols on the HUD. Played on the console as far as the forest on Outset, the
 scene with Tetra and the scene on the bridge that follows it; nothing later has
 been seen there.
 
-**Version 1.0.1** fixes a stop on a black screen at the end of the forest scene,
-which version 1.0 could not get past on a console (see Development for what it
-was). Copy the new release over the old folder; saves carry on.
+**[Version 1.0.1](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.1)** fixes a stop on a black screen at the end of the forest scene,
+which version 1.0 could not get past on a console (see [Development](#development) for what
+it was). Copy the [new release](https://github.com/griches/PS5_SwitchWaker/releases/latest) over the old folder; saves carry on.
 
 A release is the title's folder with no game in it: the player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
 `/data/homebrew/PPSA99309/` beside `eboot.bin`, and the title finds it (the
@@ -38,10 +38,10 @@ first one in its folder, then on a USB drive).
 | Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
 | 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
 | Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
-| Button prompts | The HUD shows Cross (A), Square (B), Circle (X), Triangle (Y), R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, Kenney's CC0 Input Prompts). The options menu's hints name the DualSense's buttons. Not done: the button pictures inside message text (they are in the game's font). With an HD texture pack the pack's buttons are drawn instead: see "Button symbols with a pack" below |
+| Button prompts | The HUD shows Cross (A), Square (B), Circle (X), Triangle (Y), R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, [Kenney's CC0 Input Prompts](https://kenney.nl/assets/input-prompts)). The options menu's hints name the DualSense's buttons. Not done: the button pictures inside message text (they are in the game's font). With an HD texture pack the pack's buttons are drawn instead: see [Button symbols with a pack](#hd-textures-optional) |
 | Options menu | The touch pad's click opens it |
 | Saves, settings | `/data/homebrew/PPSA99309/user/`; the first start asks to create a save file, as the game does on an empty memory card |
-| HD textures | A Dolphin texture pack the player supplies replaces the game's textures (on when a pack is in `user/hd_textures`, off otherwise; see HD textures below). Seen working on the console with Hypatia's pack on Outset and in its forest. The pack has an optional PlayStation button set for the HUD |
+| HD textures | A Dolphin texture pack the player supplies replaces the game's textures (on when a pack is in `user/hd_textures`, off otherwise; see [HD textures](#hd-textures-optional)). Seen working on the console with Hypatia's pack on Outset and in its forest. The pack has an optional PlayStation button set for the HUD |
 | Sound | Not checked by ear in this log |
 | DevLoop | `devloop-shot` and `devloop-quit` in the title's folder (registered as `windwaker-gc`); the shot answers once the game's loop runs |
 | Art | The icon and background are the port's own, cel-shaded, made with an image generator (`ps5/art/`) |
@@ -57,7 +57,7 @@ The symbol of an empty item slot sits in the middle of its bubble.
 Download `WindWaker-PS5-vX.Y.Z.zip` from the
 [latest release](https://github.com/griches/PS5_SwitchWaker/releases/latest) and
 unpack it: it holds one folder, `PPSA99309`. (Or build that folder yourself, see
-Build.) It contains no game data.
+[Build](#build).) It contains no game data.
 
 **What the console needs**
 
@@ -175,7 +175,7 @@ as returning `bool` and the game's process framework calls them as returning
 `int` and compares with `TRUE`. On x86-64 the rest of the register is undefined,
 so a delete could be refused for ever and the next scene never came; on ARM (the
 Mac, the Switch) it does not show. The framework now reads only the low byte
-(`f_pc_method.cpp`). On the Mac, `COS_EVENT_SWEEP_FOLLOW=1` lets
+([`f_pc_method.cpp` in the patch](ps5/patches/switchwaker.patch)). On the Mac, `COS_EVENT_SWEEP_FOLLOW=1` lets
 `run.sh event-sweep` go on through a stage change an event asks for.
 
 `COS_TEXTURE_DUMPS=1` writes every texture drawn into the cache folder's
