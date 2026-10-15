@@ -20,6 +20,8 @@ foreach(required PS5_PORT_DIR PS5_VULKAN_DIR DAWN_DIR SDL_DIR)
 	endif()
 endforeach()
 set(ps5 ${PS5_PORT_DIR}/ps5)
+option(PS5_MULTI_REGION "Package USA and Europe in one title" OFF)
+include_directories(${ps5}/src)
 
 # -fno-omit-frame-pointer: the console's crash backtraces are frame-pointer walks.
 add_compile_options(-g1 -ffunction-sections -fdata-sections -fno-omit-frame-pointer)
@@ -31,7 +33,7 @@ set(CMAKE_CXX_COMPILER_LAUNCHER sh ${ps5}/tools/cc-init-array.sh)
 add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
 
 # The console: klog, the pad, the title's exit, and the libc names a title cannot import
-add_library(ps5_platform STATIC ${ps5}/src/platform.c ${ps5}/src/shims.c ${ps5}/src/startup.c)
+add_library(ps5_platform STATIC ${ps5}/src/platform.c ${ps5}/src/shims.c ${ps5}/src/startup.c ${ps5}/src/disc_region.c)
 target_include_directories(ps5_platform PUBLIC ${ps5}/src)
 target_include_directories(ps5_platform PRIVATE ${SDL_DIR}/include)
 file(READ ${ps5}/sce_sys/param.json param_json)
@@ -104,6 +106,9 @@ function(ps5_late_fixes)
 	# The run harness reads frames back through Dawn's C++ header, which Dawn's
 	# build generates: it has to exist before those units compile
 	if(TARGET cos_pc AND TARGET webgpu_dawn)
+		if(PS5_MULTI_REGION)
+			target_compile_definitions(cos_pc PRIVATE PS5_MULTI_REGION=1)
+		endif()
 		add_dependencies(cos_pc webgpu_dawn)
 	endif()
 	if(TARGET cos_dsp_hle AND TARGET ZLIB::ZLIB)

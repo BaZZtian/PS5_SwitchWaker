@@ -87,11 +87,13 @@ ps5_startup(void)
 {
    platform_init(PS5_TITLE_NAME);
    seed_shader_caches();
-   /* SDL_GetPrefPath is $XDG_DATA_HOME/<org>/<app>/: saves and settings. A title
-    * sees its own folder (/app0, which is /data/homebrew/<TITLE_ID>) and nothing
-    * else of /data, so they live there. Set in SDL's own copy of the environment,
+   /* SDL_GetPrefPath is $XDG_DATA_HOME/<org>/<app>/. Keep preferences outside
+    * the title folder replaced by updates; the loader must expose writable /data.
+    * Set in SDL's own copy of the environment,
     * which is all SDL_getenv reads: the console's libc keeps what setenv sets
     * apart from the `environ` SDL copies. */
-   SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "XDG_DATA_HOME", "/app0/userdata", true);
-   SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "HOME", "/app0/userdata", true);
+   mkdir("/data/windwaker", 0777);
+   mkdir("/data/windwaker/userdata", 0777);
+   SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "XDG_DATA_HOME", "/data/windwaker/userdata", true);
+   SDL_SetEnvironmentVariable(SDL_GetEnvironment(), "HOME", "/data/windwaker/userdata", true);
 }

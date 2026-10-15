@@ -18,6 +18,9 @@ set -euo pipefail
 
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
+if [[ ${PS5_GAME_VERSION:-auto} == auto ]]; then
+    exec bash "$ps5/tools/build-universal.sh" "$@"
+fi
 source "$ps5/tools/game-version.sh"
 vulkan=$(cd -- "${PS5_VULKAN_DIR:-$root/../PS5_Vulkan}" && pwd)
 bash "$ps5/tools/setup-source.sh"
@@ -28,7 +31,7 @@ build=${PS5_BUILD_DIR:-$root/build/game$cos_build_suffix}
 ninja=$(command -v ninja || echo "$HOME/.local/bin/ninja")
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang || true)}
 
-if [[ ! -f $build/build.ninja ]]; then
+if [[ ! -f $build/build.ninja ]] || ! grep -q "^PS5_MULTI_REGION:BOOL=${PS5_MULTI_REGION:-OFF}$" "$build/CMakeCache.txt"; then
     mkdir -p "$build"
     cmake -S "$root/vendor/switchwaker/native" -B "$build" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninja" \
         -DCMAKE_TOOLCHAIN_FILE="$sdk/toolchain/prospero.cmake" \
@@ -36,14 +39,24 @@ if [[ ! -f $build/build.ninja ]]; then
         -DPS5_PORT_DIR="$root" -DPS5_VULKAN_DIR="$vulkan" -DDAWN_DIR="$dawn" -DSDL_DIR="$sdl" \
         -DFETCHCONTENT_SOURCE_DIR_AURORA="$root/.deps/aurora" -DCOS_AURORA_PREPATCHED=ON \
         -DCOS_RECOMPCORE_DIR="$root/.deps/recompcore" \
+        -DPS5_MULTI_REGION="${PS5_MULTI_REGION:-OFF}" \
         -DCOS_VERSION="$cos_version" -DCOS_GAME_ID="$cos_game_id" \
         -DCOS_RUNTIME_ASSETS=ON -DCOS_ASSETS_DIR="$root/.deps/assets/$cos_game_id" \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build/configure.log" 2>&1 \
         || { tail -60 "$build/configure.log" >&2; exit 1; }
 fi
+grep -q "^PS5_MULTI_REGION:BOOL=${PS5_MULTI_REGION:-OFF}$" "$build/CMakeCache.txt" &&
 grep -q "^COS_VERSION:STRING=$cos_version$" "$build/CMakeCache.txt" &&
     grep -q "^COS_GAME_ID:STRING=$cos_game_id$" "$build/CMakeCache.txt" || {
     echo "build directory $build is not configured for $cos_game_id; use a separate PS5_BUILD_DIR" >&2
     exit 2
 }
 "$ninja" -C "$build" "${@:-switchwaker}"
+
+# Preserve the explicit regional build's established dist layout.
+# Universal assembly reads each build's independent title instead.
+if [[ ${PS5_MULTI_REGION:-OFF} != ON ]]; then
+    title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$ps5/sce_sys/param.json")
+    mkdir -p "$root/dist/$title_id"
+    cp -a "$build/title/$title_id/." "$root/dist/$title_id/"
+fi

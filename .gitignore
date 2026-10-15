@@ -12,3 +12,5 @@ imgui.ini
 *.gcm
 *.rvz
 *.gci
+
+__pycache__/

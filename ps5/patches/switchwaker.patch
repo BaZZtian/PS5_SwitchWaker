@@ -344,7 +344,7 @@ index 43728f2..b3ce94c 100644
              // Turned on a moment ago (options menu): nothing measured yet.
              ImGui::TextUnformatted("-- fps");
 diff --git a/native/src/pc/features/pc_settings.cpp b/native/src/pc/features/pc_settings.cpp
-index cfa4172..82b6f86 100644
+index cfa4172..1ce9d09 100644
 --- a/native/src/pc/features/pc_settings.cpp
 +++ b/native/src/pc/features/pc_settings.cpp
 @@ -93,6 +93,9 @@ void computePath() {
@@ -357,7 +357,19 @@ index cfa4172..82b6f86 100644
  #else
      char exe[PATH_MAX] = {};
      pc::executablePath(exe, sizeof(exe));
-@@ -401,7 +404,25 @@ void pc_settings_load_early(void) {
+@@ -246,7 +249,10 @@ bool writeFile() {
+             fprintf(f, "%s\n", line.c_str());
+         }
+     }
+-    const bool ok = fflush(f) == 0;
++    bool ok = fflush(f) == 0;
++#if defined(__PROSPERO__)
++    if (ok && fsync(fileno(f)) != 0) ok = false;
++#endif
+     fclose(f);
+ #ifdef __SWITCH__
+     // Horizon's rename does not replace an existing file (EEXIST): drop the old one first. A kill
+@@ -401,7 +407,25 @@ void pc_settings_load_early(void) {
          }
      }
  #endif
@@ -383,7 +395,7 @@ index cfa4172..82b6f86 100644
      s.lastMode = queryMode();
      s.haveLastMode = true;
      // Every value the file gives that the environment does not: into the environment, for code
-@@ -596,6 +617,24 @@ int pc_settings_set(const char* key, const char* value) {
+@@ -596,6 +620,24 @@ int pc_settings_set(const char* key, const char* value) {
      return pc_settings_set_mode(key, st().lastMode, value);
  }
  
@@ -564,7 +576,7 @@ index 9a9f11f..6720a15 100644
  
  } // namespace
 diff --git a/native/src/pc/runtime/pc_crash.cpp b/native/src/pc/runtime/pc_crash.cpp
-index 094f649..08447d8 100644
+index 094f649..9bab7cb 100644
 --- a/native/src/pc/runtime/pc_crash.cpp
 +++ b/native/src/pc/runtime/pc_crash.cpp
 @@ -36,6 +36,10 @@
@@ -615,7 +627,7 @@ index 094f649..08447d8 100644
      const char* p = buf;
      while (len > 0) {
          ssize_t w = write(fd, p, (size_t)len);
-@@ -394,11 +414,126 @@ void traceLastResource(char* out, size_t size) {
+@@ -394,11 +414,130 @@ void traceLastResource(char* out, size_t size) {
      out[n - 1] = '\0';
  }
  
@@ -641,7 +653,11 @@ index 094f649..08447d8 100644
 +uintptr_t sDivBase = 0; // the load address of ELF address 0
 +
 +void loadDivTable() {
++#if defined(PS5_MULTI_REGION) && VERSION == 3
++    const int fd = open("/app0/res/div-table-eur.bin", O_RDONLY);
++#else
 +    const int fd = open("/app0/res/div-table.bin", O_RDONLY);
++#endif
 +    if (fd < 0) {
 +        writef(STDERR_FILENO, "[cos] no res/div-table.bin: an integer division by zero is a crash\n");
 +        return;
@@ -824,15 +840,16 @@ index 90cc87c..91c564d 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index c3592e4..5724f50 100644
+index c3592e4..2c736e3 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
-@@ -15,6 +15,12 @@
+@@ -15,6 +15,13 @@
  #if defined(__SWITCH__)
  #include "cos_switch.h"
  #endif
 +#if defined(__PROSPERO__)
 +#include <algorithm>
++#include "disc_region.h"
 +#include <dirent.h>
 +#include <strings.h>
 +#include <vector>
@@ -840,7 +857,7 @@ index c3592e4..5724f50 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +134,207 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +135,252 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -848,11 +865,11 @@ index c3592e4..5724f50 100644
 +    // PlayStation 5: /app0 is the title folder; settings use their own persistent path.
 +    snprintf(out, size, "/app0/eboot.bin");
 +    return true;
- #else
-     return false;
- #endif
- }
- 
++#else
++    return false;
++#endif
++}
++
 +#if defined(__PROSPERO__)
 +namespace {
 +void ps5Default(const char* name, const char* value) {
@@ -865,6 +882,9 @@ index c3592e4..5724f50 100644
 +// Select only the build's revision-0 disc, including the CISO layout accepted by checkDisc.
 +// checkDisc still performs the normal disc and game-data checks after selection.
 +bool ps5DiscMatches(const char* path) {
++#if defined(PS5_MULTI_REGION)
++    return ps5_disc_region(path) != PS5_DISC_INVALID;
++#else
 +    FILE* file = fopen(path, "rb");
 +    if (file == nullptr) {
 +        return false;
@@ -879,6 +899,7 @@ index c3592e4..5724f50 100644
 +    return readable && memcmp(header, COS_GAME_ID_STR, 6) == 0 && header[7] == 0 &&
 +           header[0x1C] == 0xC2 && header[0x1D] == 0x33 && header[0x1E] == 0x9F &&
 +           header[0x1F] == 0x3D;
++#endif
 +}
 +
 +std::vector<std::string> ps5DiscsInFolder(const char* directory) {
@@ -935,6 +956,8 @@ index c3592e4..5724f50 100644
 +        paths.emplace_back(preferred);
 +    }
 +    add(pc_settings_get("COS_DISC_DIR"));
++    // Fresh installs use the existing internal app layout. External paths are optional.
++    add("/app0");
 +    char directory[128];
 +    for (unsigned int drive = 0; drive < 8; ++drive) {
 +        snprintf(directory, sizeof(directory), "/mnt/usb%u/Homebrew/WindWaker-Discs", drive);
@@ -942,7 +965,6 @@ index c3592e4..5724f50 100644
 +        snprintf(directory, sizeof(directory), "/mnt/usb%u", drive);
 +        add(directory);
 +    }
-+    add("/app0");
 +    return paths;
 +}
 +
@@ -965,17 +987,16 @@ index c3592e4..5724f50 100644
 +    if (customDirectory[0] == '/' && ps5DiscFromFolder(customDirectory)) {
 +        return;
 +    }
-+    // The disc lives outside the updateable app folder. Probe all USB numbers so hotplug and
-+    // reboot renumbering do not require another binary or a hard-coded drive number.
++    if (ps5DiscFromFolder("/app0")) {
++        return;
++    }
++    // Probe available external locations without assuming a particular USB number exists.
 +    char directory[128];
 +    for (unsigned int drive = 0; drive < 8; ++drive) {
 +        snprintf(directory, sizeof(directory), "/mnt/usb%u/Homebrew/WindWaker-Discs", drive);
 +        if (ps5DiscFromFolder(directory)) {
 +            return;
 +        }
-+    }
-+    if (ps5DiscFromFolder("/app0")) {
-+        return;
 +    }
 +    for (unsigned int drive = 0; drive < 8; ++drive) {
 +        snprintf(directory, sizeof(directory), "/mnt/usb%u", drive);
@@ -1013,6 +1034,47 @@ index c3592e4..5724f50 100644
 +    pc_settings_register(&desc);
 +}
 +
++// Validate the current engine normally; another supported region is checked
++// again by its own engine after handoff, before any game data loads.
++bool ps5ValidateSelectedDisc() {
++#if defined(PS5_MULTI_REGION)
++    const auto region = ps5_disc_region(gConfig.disc);
++    if (region == PS5_DISC_INVALID) return false;
++    if (strcmp(ps5_disc_id(region), COS_GAME_ID_STR) != 0) return true;
++#endif
++    return checkDisc() == 0;
++}
++bool ps5StartSelectedDisc() {
++#if defined(PS5_MULTI_REGION)
++    const auto region = ps5_disc_region(gConfig.disc);
++    if (region == PS5_DISC_INVALID) return false;
++    if (strcmp(ps5_disc_id(region), COS_GAME_ID_STR) != 0) {
++        // A wrongly packaged engine must fail rather than bounce between
++        // executables. Only the initial process may request a handoff.
++        if (getenv("COS_PS5_HANDOFF") != nullptr) {
++            writef(STDERR_FILENO, "[cos] region: handoff engine does not match the selected disc\n");
++            return false;
++        }
++        const int error = ps5_load_disc_region(region, gConfig.disc);
++        writef(STDERR_FILENO, "[cos] region: unable to start %s, error 0x%x\n",
++               ps5_disc_id(region), (unsigned)error);
++        return false;
++    }
++#endif
++    return true;
++}
++bool ps5ResumeSelectedDisc() {
++#if defined(PS5_MULTI_REGION)
++    const char* handoff = getenv("COS_PS5_HANDOFF");
++    return handoff && !strcmp(handoff, COS_GAME_ID_STR) &&
++           ps5_disc_region(gConfig.disc) != PS5_DISC_INVALID &&
++           !strcmp(ps5_disc_id(ps5_disc_region(gConfig.disc)), COS_GAME_ID_STR) &&
++           checkDisc() == 0;
+ #else
+     return false;
+ #endif
+ }
+ 
 +// The console's defaults, for what the settings file (the options menu) has not set: as the
 +// Switch's (switch/native/source/cos_switch.cpp), for a television and a faster machine.
 +void ps5Defaults() {
@@ -1048,7 +1110,7 @@ index c3592e4..5724f50 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +347,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +393,15 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -1058,12 +1120,13 @@ index c3592e4..5724f50 100644
 +#endif
      pc_settings_load_early();
 +#if defined(__PROSPERO__)
++    ps5_region_arguments(argc, argv);
 +    ps5Defaults();
 +#endif
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -240,12 +449,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -240,12 +496,14 @@ void pc_harness_init(int argc, char* argv[]) {
      // Smoke tests that run before any SDK call (static-init, the harness self-tests) end here.
      runEarlySmoke();
  
@@ -1078,7 +1141,7 @@ index c3592e4..5724f50 100644
  }
  
  const char* pc_env_disc(void) {
-@@ -260,6 +471,10 @@ int pc_env_audio(void) {
+@@ -260,6 +518,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -1089,7 +1152,7 @@ index c3592e4..5724f50 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -284,6 +499,13 @@ void pc_exit(int code) {
+@@ -284,6 +546,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);
@@ -1104,10 +1167,20 @@ index c3592e4..5724f50 100644
      _Exit(code);
  #endif
 diff --git a/native/src/pc/runtime/pc_main.cpp b/native/src/pc/runtime/pc_main.cpp
-index b3689d7..062243c 100644
+index b3689d7..67e465a 100644
 --- a/native/src/pc/runtime/pc_main.cpp
 +++ b/native/src/pc/runtime/pc_main.cpp
-@@ -43,6 +43,8 @@
+@@ -24,6 +24,9 @@
+ #include "pc/pc_hd_textures.h"
+ #include "pc/pc_aspect.h"
+ #include "pc/pc_game_id.h"
++#if defined(__PROSPERO__)
++#include "pc_ps5_user_storage.h"
++#endif
+ 
+ #include "JSystem/JKernel/JKRHeap.h"
+ #include "m_Do/m_Do_audio.h"
+@@ -43,6 +46,8 @@
  #include <sys/stat.h>
  #include <unistd.h>
  
@@ -1116,7 +1189,7 @@ index b3689d7..062243c 100644
  #if defined(__SWITCH__)
  #include "JSystem/JAudio/JASAudioThread.h"
  #include "m_Do/m_Do_dvd_thread.h"
-@@ -56,6 +58,10 @@ extern "C" void VISetFrameBufferScale(float scale);
+@@ -56,6 +61,10 @@ extern "C" void VISetFrameBufferScale(float scale);
  
  namespace pc {
  
@@ -1127,7 +1200,34 @@ index b3689d7..062243c 100644
  namespace {
  
  constexpr uint32_t kMem1Size = 256u * 1024 * 1024; // decision H5
-@@ -233,7 +239,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -78,6 +87,14 @@ void makeUserPaths(const char* argv0) {
+ #if defined(__SWITCH__)
+     (void)argv0;
+     snprintf(sUserPath, sizeof(sUserPath), "%s/user", COS_SWITCH_ROOT);
++#elif defined(__PROSPERO__)
++    (void)argv0;
++    if (!ps5PrepareUserStorage()) {
++        discMessage("Cannot prepare persistent saves in /data/windwaker/user. "
++                    "Existing saves in /app0/user have been retained.");
++        pc_exit(PC_EXIT_USAGE);
++    }
++    snprintf(sUserPath, sizeof(sUserPath), "/data/windwaker/user");
+ #else
+     char exe[PATH_MAX] = {};
+     executablePath(exe, sizeof(exe));
+@@ -95,6 +112,11 @@ void makeUserPaths(const char* argv0) {
+     snprintf(sUserPath, sizeof(sUserPath), "%.*s/user", dirLen, path);
+ #endif
+     snprintf(sCachePath, sizeof(sCachePath), "%s/cache", sUserPath);
++#if defined(__PROSPERO__)
++    // Shader caches are disposable and can be reseeded from an updated title.
++    makeDir("/app0/user");
++    snprintf(sCachePath, sizeof(sCachePath), "/app0/user/cache");
++#endif
+ #if !defined(__SWITCH__)
+     // COS_CACHE_DIR: Aurora's caches (pipeline_cache.db, dawn_cache.db) in that directory instead,
+     // e.g. a fresh one per run for native/tools/gen_pipeline_cache.sh, which records the pipelines
+@@ -233,7 +255,25 @@ void pc_aurora_init(int argc, char* argv[]) {
      config.windowWidth = (int)(480 * 3 / 2 * pc_aspect_ratio() + 0.5f);
      config.windowHeight = 480 * 3 / 2;
      config.logLevel = LOG_INFO;
@@ -1154,7 +1254,7 @@ index b3689d7..062243c 100644
      config.mem1Size = kMem1Size;
      config.mem2Size = kMem2Size;
      config.blockingPipelines = gConfig.syncPipelines;
-@@ -242,6 +266,12 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -242,6 +282,12 @@ void pc_aurora_init(int argc, char* argv[]) {
          writef(STDERR_FILENO, "[cos] aurora_initialize returned no window\n");
          pc_exit(PC_EXIT_USAGE);
      }
@@ -1167,7 +1267,7 @@ index b3689d7..062243c 100644
  #if defined(__SWITCH__)
      // Name Aurora's render worker for its CPU time in the perf-switch lines (thread_wrap.c).
      aurora::gfx::render_worker::enqueue_work([] {
-@@ -250,6 +280,25 @@ void pc_aurora_init(int argc, char* argv[]) {
+@@ -250,6 +296,25 @@ void pc_aurora_init(int argc, char* argv[]) {
          }
      });
  #endif
@@ -1193,12 +1293,69 @@ index b3689d7..062243c 100644
      applyFrameBufferScale(info.windowSize);
      if (pc_aspect_wide()) {
          // The game draws an anamorphic picture into the 640x480 EFB (pc_aspect.h): Aurora presents
+diff --git a/native/src/pc/runtime/pc_ps5_disc_art.h b/native/src/pc/runtime/pc_ps5_disc_art.h
+new file mode 100644
+index 0000000..cbac53a
+--- /dev/null
++++ b/native/src/pc/runtime/pc_ps5_disc_art.h
+@@ -0,0 +1,51 @@
++// Original PS5 app artwork, converted losslessly during title packaging.
++#ifndef PC_PS5_DISC_ART_H
++#define PC_PS5_DISC_ART_H
++#include <algorithm>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <vector>
++#include <aurora/imgui.h>
++#include <imgui.h>
++namespace pc {
++struct Ps5DiscBackdrop {
++    ImTextureID texture = 0;
++    uint32_t width = 0, height = 0;
++    Ps5DiscBackdrop() {
++        FILE* file = fopen("/app0/res/disc-background.rgba", "rb");
++        if (!file) return;
++        uint32_t header[3] = {};
++        const bool valid = fread(header, sizeof(header), 1, file) == 1 &&
++                           header[0] == 0x47425757 && header[1] && header[2] &&
++                           header[1] <= 8192 && header[2] <= 8192 &&
++                           uint64_t(header[1]) * header[2] <= 16777216;
++        if (valid) {
++            std::vector<uint8_t> pixels(size_t(header[1]) * header[2] * 4);
++            if (fread(pixels.data(), 1, pixels.size(), file) == pixels.size()) {
++                width = header[1]; height = header[2];
++                texture = aurora_imgui_add_texture(width, height, pixels.data());
++            }
++        }
++        fclose(file);
++    }
++    void draw(ImVec2 size) const {
++        ImDrawList* list = ImGui::GetBackgroundDrawList();
++        if (texture) {
++            const float display = size.x / std::max(size.y, 1.f);
++            const float image = float(width) / height;
++            const float u = image > display ? (1.f - display/image)*.5f : 0.f;
++            const float v = image < display ? (1.f - image/display)*.5f : 0.f;
++            list->AddImage(texture, ImVec2(0,0), size, ImVec2(u,v), ImVec2(1-u,1-v));
++        } else {
++            list->AddRectFilledMultiColor(ImVec2(0,0),size,
++                IM_COL32(25,107,157,255),IM_COL32(62,168,181,255),
++                IM_COL32(9,61,100,255),IM_COL32(8,74,115,255));
++        }
++        list->AddRectFilledMultiColor(ImVec2(0,0),size,
++            IM_COL32(4,28,48,125),IM_COL32(4,28,48,55),
++            IM_COL32(4,28,48,90),IM_COL32(4,28,48,90));
++    }
++};
++}
++#endif
 diff --git a/native/src/pc/runtime/pc_ps5_disc_browser.h b/native/src/pc/runtime/pc_ps5_disc_browser.h
 new file mode 100644
-index 0000000..af438b7
+index 0000000..6a37b37
 --- /dev/null
 +++ b/native/src/pc/runtime/pc_ps5_disc_browser.h
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,120 @@
 +// PS5 startup disc browser: filesystem navigation without game or graphics dependencies.
 +#ifndef PC_PS5_DISC_BROWSER_H
 +#define PC_PS5_DISC_BROWSER_H
@@ -1224,6 +1381,22 @@ index 0000000..af438b7
 +    bool detected = true;
 +    bool truncated = false;
 +    explicit Ps5DiscBrowser(Discover scan, Matches check) : discover(scan), matches(check) { refresh(); }
++    std::string savedImage(const char* preferred) const {
++        if (!preferred || preferred[0] != '/') return {};
++        if (matches(preferred)) return preferred;
++        const char* basename = strrchr(preferred, '/');
++        if (!basename || !basename[1]) return {};
++        std::string recovered;
++        for (const auto& row : rows) {
++            if (row.kind != Kind::Image) continue;
++            const char* name = strrchr(row.path.c_str(), '/');
++            if (name && !strcmp(name + 1, basename + 1)) {
++                if (!recovered.empty()) return {}; // Ambiguous USB recovery needs a choice.
++                recovered = row.path;
++            }
++        }
++        return recovered;
++    }
 +    static bool directory(const std::string& path) {
 +        DIR* dir = opendir(path.c_str());
 +        if (!dir) return false;
@@ -1239,11 +1412,12 @@ index 0000000..af438b7
 +            for (const auto& path : discover()) rows.push_back({Kind::Image, path, path});
 +            rows.push_back({Kind::Browse, "", ""});
 +        } else if (folder.empty()) {
++            if (directory("/app0")) rows.push_back({Kind::Directory, "App folder (/app0)", "/app0"});
 +            for (unsigned drive = 0; drive < 8; ++drive) {
 +                const auto path = "/mnt/usb" + std::to_string(drive);
 +                if (directory(path)) rows.push_back({Kind::Directory, "USB " + std::to_string(drive), path});
 +            }
-+            for (const char* path : {"/mnt/ext0", "/mnt/ext1", "/app0", "/data"}) {
++            for (const char* path : {"/mnt/ext0", "/mnt/ext1", "/data"}) {
 +                if (directory(path)) rows.push_back({Kind::Directory, path, path});
 +            }
 +        } else {
@@ -1302,23 +1476,56 @@ index 0000000..af438b7
 +};
 +} // namespace pc
 +#endif
+diff --git a/native/src/pc/runtime/pc_ps5_disc_layout.h b/native/src/pc/runtime/pc_ps5_disc_layout.h
+new file mode 100644
+index 0000000..c345174
+--- /dev/null
++++ b/native/src/pc/runtime/pc_ps5_disc_layout.h
+@@ -0,0 +1,17 @@
++// TV-distance layout in logical display pixels, independent of graphics bindings.
++#ifndef PC_PS5_DISC_LAYOUT_H
++#define PC_PS5_DISC_LAYOUT_H
++#include <algorithm>
++namespace pc {
++struct Ps5DiscLayout {
++    float scale, text, title, margin, row;
++    float panelX, panelY, panelWidth, panelHeight;
++};
++inline Ps5DiscLayout ps5DiscLayout(float width, float height, float preference = 1.f) {
++    const float scale = std::max(0.1f, std::min(width / 1920.f, height / 1080.f));
++    const float text = 32.f * scale * std::clamp(preference, 0.75f, 1.5f);
++    return {scale, text, 60.f * scale, 28.f * scale, text * 2.7f,
++            width * 0.075f, height * 0.23f, width * 0.85f, height * 0.69f};
++}
++} // namespace pc
++#endif
 diff --git a/native/src/pc/runtime/pc_ps5_disc_ui.cpp b/native/src/pc/runtime/pc_ps5_disc_ui.cpp
 new file mode 100644
-index 0000000..cf38eb0
+index 0000000..dee12e1
 --- /dev/null
 +++ b/native/src/pc/runtime/pc_ps5_disc_ui.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,323 @@
 +// PS5 disc selection before DVD, runtime assets and game initialization.
 +#if defined(__PROSPERO__)
 +#include "pc_internal.h"
++#if defined(PS5_MULTI_REGION)
++#define PS5_SUPPORTED_DISC_IDS "GZLE01 / GZLP01"
++#define PS5_SUPPORTED_REGIONS "USA / Europe"
++#else
++#define PS5_SUPPORTED_DISC_IDS COS_GAME_ID_STR
++#define PS5_SUPPORTED_REGIONS PC_GAME_REGION_EN
++#endif
 +#include "pc/pc_game_id.h"
 +#include "pc/pc_settings.h"
 +#include "pc_ps5_disc_browser.h"
++#include "pc_ps5_disc_layout.h"
++#include "pc_ps5_disc_art.h"
 +#include <aurora/aurora.h>
 +#include <aurora/event.h>
 +#include <SDL3/SDL.h>
 +#include <imgui.h>
 +#include <cstdlib>
++#include <cmath>
 +#include <unistd.h>
 +
 +namespace pc {
@@ -1327,10 +1534,12 @@ index 0000000..cf38eb0
 +void ps5RegisterDiscSetting();
 +
 +namespace {
-+enum { Up = 1, Down = 2, Confirm = 4, Back = 8 };
++enum { Up = 1, Down = 2, Confirm = 4, Back = 8, Smaller = 16, Larger = 32, Help = 64, Activity = 128 };
 +struct BrowserInput {
 +    SDL_Gamepad* pad = nullptr;
 +    bool owned = false;
++    bool mouseKnown = false;
++    float mouseX = 0, mouseY = 0;
 +    ~BrowserInput() { if (owned && pad) SDL_CloseGamepad(pad); }
 +    unsigned read() {
 +        if (pad && !SDL_GamepadConnected(pad)) {
@@ -1350,39 +1559,89 @@ index 0000000..cf38eb0
 +        unsigned keys = 0;
 +        if (pad) {
 +            const int y = SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY);
++            for (auto axis : {SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY,
++                              SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY}) {
++                if (std::abs(SDL_GetGamepadAxis(pad, axis)) > 8000) keys |= Activity;
++            }
 +            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP) || y < -20000) keys |= Up;
 +            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN) || y > 20000) keys |= Down;
 +            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH)) keys |= Confirm;
 +            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST)) keys |= Back;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) keys |= Smaller;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) keys |= Larger;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST)) keys |= Help;
++            if (SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT) ||
++                SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) keys |= Activity;
 +        }
 +        int count = 0;
 +        const bool* key = SDL_GetKeyboardState(&count);
-+        if (key && count > SDL_SCANCODE_DOWN) {
++        if (key && count > SDL_SCANCODE_PAGEDOWN) {
 +            if (key[SDL_SCANCODE_UP]) keys |= Up;
 +            if (key[SDL_SCANCODE_DOWN]) keys |= Down;
 +            if (key[SDL_SCANCODE_RETURN]) keys |= Confirm;
 +            if (key[SDL_SCANCODE_ESCAPE]) keys |= Back;
++            if (key[SDL_SCANCODE_PAGEDOWN]) keys |= Smaller;
++            if (key[SDL_SCANCODE_PAGEUP]) keys |= Larger;
++            if (count > SDL_SCANCODE_H && key[SDL_SCANCODE_H]) keys |= Help;
++            if (count > SDL_SCANCODE_LEFT && count > SDL_SCANCODE_RIGHT &&
++                (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_RIGHT])) keys |= Activity;
 +        }
++        float x = 0, y = 0;
++        const auto buttons = SDL_GetMouseState(&x, &y);
++        if ((mouseKnown && (std::abs(x-mouseX) > .5f || std::abs(y-mouseY) > .5f)) || buttons)
++            keys |= Activity;
++        mouseX = x; mouseY = y; mouseKnown = true;
 +        return keys;
 +    }
 +};
 +}
 +
++bool ps5ValidateSelectedDisc();
++bool ps5StartSelectedDisc();
++bool ps5ResumeSelectedDisc();
++
 +void ps5DiscStartupScreen() {
++    if (ps5ResumeSelectedDisc()) return;
 +    if (gConfig.smoke || gConfig.milestone) {
-+        if (checkDisc() != 0) exitDisc();
++        if (!ps5ValidateSelectedDisc() || !ps5StartSelectedDisc()) exitDisc();
 +        return;
 +    }
++    static const PcSettingChoice sizes[] = {{"75","75%","75%"},{"100","100%","100%"},
++                                            {"125","125%","125%"},{"150","150%","150%"}};
++    const PcSettingDesc sizeSetting = {"COS_DISC_UI_SIZE", "TamaÃ±o del selector",
++        "TamaÃ±o del texto del selector de disco al arrancar.", PC_SETTING_TAB_DEBUG,
++        PC_SETTING_RESTART, sizes, 4, "100", nullptr, nullptr, 1,
++        "Disc browser text size", "Text size of the startup disc browser."};
++    pc_settings_register(&sizeSetting);
++    int sizeChoice = 1;
++    for (int i=0; i<4; ++i) if (!strcmp(pc_settings_get("COS_DISC_UI_SIZE"), sizes[i].value)) sizeChoice=i;
 +    Ps5DiscBrowser browser(ps5AvailableDiscs, ps5CompatibleDisc);
++    const std::string remembered = browser.savedImage(pc_settings_get("COS_DISC_PATH"));
++    bool continueSaved = !remembered.empty();
++    // New and stale installations explain storage before asking for a disc.
++    bool showInfo = remembered.empty();
++    unsigned infoPage = 0;
 +    for (size_t i = 0; i < browser.rows.size(); ++i) {
-+        if (gConfig.disc && browser.rows[i].path == gConfig.disc) browser.selected = (int)i;
++        if (!remembered.empty() && browser.rows[i].path == remembered) browser.selected = (int)i;
 +    }
 +    const bool german = !strcmp(pc_settings_get("COS_GAME_LANGUAGE"), "de");
 +    const auto text = [&](const char* de, const char* en) { return german ? de : en; };
++    ImFontConfig fontConfig;
++    fontConfig.SizePixels = 72.f;
++    auto& io = ImGui::GetIO();
++    // Before the first frame ImGui may not have installed its usual 13px font.
++    // Keep that font as the global default; the 72px font belongs only to this screen.
++    if (io.Fonts->Fonts.empty()) io.Fonts->AddFontDefault();
++    if (!io.FontDefault) io.FontDefault = io.Fonts->Fonts[0];
++    ImFont* font = io.Fonts->AddFontDefault(&fontConfig);
++    const Ps5DiscBackdrop backdrop;
 +    BrowserInput input;
 +    unsigned held = ~0u; // The opening button must be released before it can launch a title.
++    bool launchFailed = false;
 +    bool unsaved = false;
++    bool sizeUnsaved = false;
 +    std::string chosen;
++    const Uint64 opened = SDL_GetTicks();
 +    writef(STDERR_FILENO, "[cos] disc browser: ready before disc initialization\n");
 +    for (;;) {
 +        for (const AuroraEvent* event = aurora_update(); event && event->type != AURORA_NONE; ++event) {
@@ -1392,81 +1651,285 @@ index 0000000..cf38eb0
 +        const unsigned current = input.read();
 +        const unsigned pressed = current & ~held;
 +        held = current;
-+        if (pressed & (Up | Down | Back)) { unsaved = false; chosen.clear(); }
-+        if (pressed & Up) browser.move(-1);
-+        if (pressed & Down) browser.move(1);
-+        if (pressed & Back) browser.back();
-+        bool activate = (pressed & Confirm) != 0;
++        // Held or horizontal input must cancel too, including input on the opening frame.
++        if (current & (Up | Down | Back | Smaller | Larger | Help | Activity)) continueSaved = false;
++        if (pressed & (Up | Down | Back | Smaller | Larger | Help)) {
++            unsaved = false; chosen.clear(); continueSaved = false;
++        }
++        const bool infoInput = showInfo || (pressed & Help);
++        if (pressed & Help) { showInfo = !showInfo; infoPage = 0; }
++        else if (showInfo) {
++            if (pressed & Up) infoPage = (infoPage + 2) % 3;
++            if (pressed & Down) infoPage = (infoPage + 1) % 3;
++            if (pressed & (Confirm | Back)) showInfo = false;
++        } else {
++            if (pressed & Up) browser.move(-1);
++            if (pressed & Down) browser.move(1);
++            if (pressed & Back) browser.back();
++        }
++        if (pressed & (Smaller | Larger)) {
++            sizeChoice = std::clamp(sizeChoice + (pressed & Larger ? 1 : -1), 0, 3);
++            sizeUnsaved = pc_settings_set_startup("COS_DISC_UI_SIZE", sizes[sizeChoice].value) != 0;
++        }
++        const Uint64 elapsed = SDL_GetTicks() - opened;
++        bool activate = !infoInput && ((pressed & Confirm) != 0 || (continueSaved && elapsed >= 3000));
 +        if (aurora_begin_frame()) {
 +            const ImVec2 size = ImGui::GetIO().DisplaySize;
-+            ImGui::SetNextWindowPos(ImVec2(0, 0));
-+            ImGui::SetNextWindowSize(size);
++            const auto layout = ps5DiscLayout(size.x, size.y, std::strtof(sizes[sizeChoice].value,nullptr)/100.f);
++            backdrop.draw(size);
++            ImDrawList* draw = ImGui::GetBackgroundDrawList();
++            draw->AddText(font, layout.title, ImVec2(layout.panelX,size.y*.075f),
++                          IM_COL32(255,243,201,255), "WIND WAKER");
++            draw->AddText(font,26.f*layout.scale,ImVec2(layout.panelX,size.y*.16f),
++                          IM_COL32(221,243,237,255),text("Dein Abenteuer auf dem Meer","Your adventure at sea"));
++            draw->AddRectFilled(ImVec2(layout.panelX,layout.panelY),
++                                ImVec2(layout.panelX+layout.panelWidth,layout.panelY+layout.panelHeight),
++                                IM_COL32(10,44,67,230),20.f*layout.scale);
++            ImGui::PushFont(font);
++            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,ImVec2(layout.margin,layout.margin));
++            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(12.f*layout.scale,12.f*layout.scale));
++            ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(.91f,.96f,.94f,1));
++            ImGui::PushStyleColor(ImGuiCol_Header,ImVec4(.11f,.41f,.48f,1));
++            ImGui::PushStyleColor(ImGuiCol_HeaderHovered,ImVec4(.15f,.49f,.55f,1));
++            ImGui::PushStyleColor(ImGuiCol_HeaderActive,ImVec4(.19f,.55f,.57f,1));
++            ImGui::SetNextWindowPos(ImVec2(layout.panelX,layout.panelY));
++            ImGui::SetNextWindowSize(ImVec2(layout.panelWidth,layout.panelHeight));
 +            if (ImGui::Begin("##windwaker_disc_browser", nullptr,
-+                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings)) {
-+                ImGui::SetWindowFontScale(size.y >= 1000 ? 1.6f : 1.25f);
-+                ImGui::TextUnformatted("Wind Waker");
-+                ImGui::TextWrapped("%s: " COS_GAME_ID_STR " / %s 0", PC_GAME_REGION_EN,
++                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground)) {
++                ImGui::SetWindowFontScale(layout.text/72.f);
++                if (showInfo) {
++                    ImGui::TextWrapped(text("ISO und SpielstÃ¤nde Â· %u/3", "Disc images and saves Â· %u/3"), infoPage+1);
++                    ImGui::Separator();
++                    ImGui::BeginChild("storage_help", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 3));
++                    if (infoPage == 0) {
++                        ImGui::TextWrapped("%s", text("Interner Standardordner:", "Default internal folder:"));
++                        ImGui::TextWrapped("%s", "/data/homebrew/PPSA99309/");
++                        ImGui::TextWrapped("%s", text("ISO neben eboot.bin ablegen. In der App heiÃŸt dieser Ordner /app0/.",
++                                                      "Place the image beside eboot.bin. Inside this app the folder is /app0/."));
++                        ImGui::TextWrapped("%s", text("Wichtig: Beim Ersetzen des App-Ordners kann die ISO gelÃ¶scht werden. Vor Updates sichern.",
++                                                      "Replacing the app folder can delete its disc image. Back it up before updating."));
++                    } else if (infoPage == 1) {
++                        ImGui::TextWrapped("%s", text("Du kannst einen anderen lesbaren Ordner wÃ¤hlen. Angezeigt werden nur erreichbare Laufwerke; es ist kein USB-Pfad voreingestellt.",
++                                                      "You can choose another readable folder. Only available drives are listed; no USB path is preconfigured."));
++                        ImGui::TextWrapped("%s", text("Eine ISO auÃŸerhalb des App-Ordners bleibt bei dessen Ersetzen erhalten.",
++                                                      "A disc outside the app folder survives replacement of that folder."));
++                        ImGui::TextWrapped("%s: " PS5_SUPPORTED_DISC_IDS " / %s 0 Â· .iso, .gcm, .ciso", PS5_SUPPORTED_REGIONS,
++                                           text("Revision", "revision"));
++                    } else {
++                        ImGui::TextWrapped("%s", text("SpielstÃ¤nde: /data/windwaker/user/", "Saved games: /data/windwaker/user/"));
++                        ImGui::TextWrapped("%s", text("Einstellungen: /data/windwaker/settings.ini", "Settings: /data/windwaker/settings.ini"));
++                        ImGui::TextWrapped("%s", text("Beides liegt auÃŸerhalb des App-Ordners. /data/windwaker/ vor Updates sichern.",
++                                                      "Both are outside the app folder. Back up /data/windwaker/ before updates."));
++                        ImGui::TextWrapped("%s", text("Alte SpielstÃ¤nde werden einmal importiert. Den alten user/-Ordner bis zum ersten Start behalten. Texturpakete darin separat sichern.",
++                                                      "Old saves are imported once. Keep the old user/ folder until first launch. Back up texture packs in it separately."));
++                    }
++                    ImGui::EndChild();
++                    ImGui::TextWrapped("%s", text("Oben/unten: Hinweise   X/Kreis: ISO-Auswahl", "Up/down: information pages   X/Circle: disc selection"));
++                    ImGui::TextWrapped(text("L1/R1: SchriftgrÃ¶ÃŸe %s%%", "L1/R1: text size %s%%"), sizes[sizeChoice].value);
++                } else {
++                if (continueSaved) {
++                    ImGui::TextWrapped(text("Gespeicherte ISO Â· Start in %u s. Kreis: andere ISO.",
++                                           "Saved image Â· starting in %u s. Circle: choose another."),
++                                       unsigned((3000-std::min<Uint64>(elapsed,3000)+999)/1000));
++                } else ImGui::TextUnformatted(text("ISO auswÃ¤hlen","Choose a disc image"));
++                ImGui::TextWrapped("%s: " PS5_SUPPORTED_DISC_IDS " / %s 0", PS5_SUPPORTED_REGIONS,
 +                                   text("Revision", "revision"));
 +                ImGui::Separator();
-+                ImGui::TextWrapped("%s", text("ISO auswählen und mit X starten. Kreis: zurück.",
++                ImGui::TextWrapped("%s", text("ISO auswÃ¤hlen und mit X starten. Kreis: zurÃ¼ck.",
 +                                              "Select a disc image and press X to start. Circle: back."));
 +                if (browser.detected && browser.rows.size() == 2) {
 +                    ImGui::TextWrapped("%s", text("Keine passende ISO gefunden. Durchsuche einen Ordner oder suche erneut.",
 +                                                  "No compatible image found. Browse a folder or rescan."));
 +                }
 +                if (!browser.folder.empty()) ImGui::TextWrapped("%s", browser.folder.c_str());
-+                if (!browser.detected && browser.folder.empty()) ImGui::TextWrapped("%s", text("Wenn die HDD hier fehlt, ist sie für diese App nicht erreichbar. Verbinde sie erneut und suche noch einmal.",
++                if (!browser.detected && browser.folder.empty()) ImGui::TextWrapped("%s", text("Wenn die HDD hier fehlt, ist sie fÃ¼r diese App nicht erreichbar. Verbinde sie erneut und suche noch einmal.",
 +                                                                                              "If the HDD is missing here, this app cannot access it. Reconnect it and rescan."));
-+                if (browser.error == "directory") ImGui::TextWrapped("%s", text("Ordner nicht lesbar. Das Laufwerk muss für diese App eingebunden sein.",
++                if (browser.error == "directory") ImGui::TextWrapped("%s", text("Ordner nicht lesbar. Das Laufwerk muss fÃ¼r diese App eingebunden sein.",
 +                                                                                 "Folder is unreadable. The drive must be mounted into this app."));
-+                if (browser.error == "image") ImGui::TextWrapped("%s", text("Datei nicht lesbar oder nicht passend für diesen Build. Erwartet: " COS_GAME_ID_STR " Revision 0.",
-+                                                                             "Image is unreadable or incompatible. Expected: " COS_GAME_ID_STR " revision 0."));
-+                if (unsaved) ImGui::TextWrapped("%s", text("Auswahl gilt für diesen Start, konnte aber nicht gespeichert werden. X: trotzdem starten.",
++                if (browser.error == "image") ImGui::TextWrapped("%s", text("Datei nicht lesbar oder nicht passend fÃ¼r diesen Build. Erwartet: " PS5_SUPPORTED_DISC_IDS " Revision 0.",
++                                                                             "Image is unreadable or incompatible. Expected: " PS5_SUPPORTED_DISC_IDS " revision 0."));
++                if (unsaved) ImGui::TextWrapped("%s", text("Auswahl gilt fÃ¼r diesen Start, konnte aber nicht gespeichert werden. X: trotzdem starten.",
 +                                                                       "Selection applies to this session but could not be saved. X: start anyway."));
-+                if (browser.truncated) ImGui::TextWrapped("%s", text("Anzeige auf 512 Einträge begrenzt.", "Showing at most 512 entries."));
-+                ImGui::BeginChild("images", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 2));
++                if (launchFailed || browser.error == "launch") ImGui::TextWrapped("%s",
++                    text("Passende Spielversion konnte nicht gestartet werden. Das vollstÃ¤ndige App-Paket mit beiden Regionen neu installieren.",
++                         "Could not start the matching game version. Reinstall the complete app package containing both regions."));
++                if (sizeUnsaved) ImGui::TextWrapped("%s",text("SchriftgrÃ¶ÃŸe konnte nicht gespeichert werden.","Text size could not be saved."));
++                if (browser.truncated) ImGui::TextWrapped("%s", text("Anzeige auf 512 EintrÃ¤ge begrenzt.", "Showing at most 512 entries."));
++                ImGui::BeginChild("images", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 3));
 +                for (size_t i = 0; i < browser.rows.size(); ++i) {
 +                    const auto& row = browser.rows[i];
++                    const std::string filename = row.kind == Ps5DiscBrowser::Kind::Image ?
++                        row.path.substr(row.path.find_last_of('/') + 1) : row.name;
 +                    const char* label = row.kind == Ps5DiscBrowser::Kind::Browse ? text("Ordner durchsuchen", "Browse folders") :
-+                                        row.kind == Ps5DiscBrowser::Kind::Rescan ? text("Erneut suchen", "Rescan") : row.name.c_str();
++                                        row.kind == Ps5DiscBrowser::Kind::Rescan ? text("Erneut suchen", "Rescan") : filename.c_str();
 +                    ImGui::PushID((int)i);
-+                    if (ImGui::Selectable(label, browser.selected == (int)i)) {
++                    const float wrap = std::max(1.f,ImGui::GetContentRegionAvail().x-24.f*layout.scale);
++                    const auto extent = ImGui::CalcTextSize(label,nullptr,false,wrap);
++                    if (ImGui::Selectable("##disc_row", browser.selected == (int)i,0,
++                                          ImVec2(0,extent.y+16.f*layout.scale))) {
++                        continueSaved = false;
 +                        if (browser.selected != (int)i) { unsaved = false; chosen.clear(); }
 +                        browser.selected = (int)i;
 +                        activate = true;
 +                    }
++                    const ImVec2 rowStart = ImGui::GetItemRectMin();
++                    ImGui::GetWindowDrawList()->AddText(font,layout.text,
++                        ImVec2(rowStart.x+12.f*layout.scale,rowStart.y+8.f*layout.scale),
++                        IM_COL32(238,249,239,255),label,nullptr,wrap);
 +                    if (browser.selected == (int)i && (pressed & (Up | Down))) ImGui::SetScrollHereY();
 +                    ImGui::PopID();
 +                }
 +                ImGui::EndChild();
-+                ImGui::TextUnformatted(text("X: auswählen/starten   Kreis: zurück   Steuerkreuz: navigieren",
-+                                           "X: select/start   Circle: back   D-pad: navigate"));
++                ImGui::TextWrapped("%s", text("X: wÃ¤hlen   Kreis: zurÃ¼ck   Quadrat: ISO/Spielstand-Infos",
++                                             "X: select   Circle: back   Square: disc/save information"));
++                ImGui::TextWrapped(text("L1/R1: SchriftgrÃ¶ÃŸe %s%%","L1/R1: text size %s%%"), sizes[sizeChoice].value);
++                }
 +            }
 +            ImGui::End();
++            ImGui::PopStyleColor(4);
++            ImGui::PopStyleVar(2);
++            ImGui::PopFont();
 +            aurora_end_frame();
 +        }
 +        if (activate) {
++            launchFailed = false;
 +            if (unsaved && !chosen.empty()) {
-+                if (checkDisc() == 0) return;
++                if (ps5ValidateSelectedDisc()) {
++                    if (ps5StartSelectedDisc()) return;
++                    launchFailed = true;
++                }
 +                unsaved = false;
-+                browser.error = "image";
++                browser.error = launchFailed ? "launch" : "image";
 +            } else {
 +                chosen = browser.activate();
 +                if (!chosen.empty()) {
 +                    setenv("COS_DISC", chosen.c_str(), 1);
 +                    gConfig.disc = getenv("COS_DISC");
-+                    if (checkDisc() != 0) { browser.error = "image"; chosen.clear(); }
++                    if (!ps5ValidateSelectedDisc()) { browser.error = "image"; chosen.clear(); continueSaved=false; }
 +                    else {
 +                        const int stored = pc_settings_set_startup("COS_DISC_PATH", chosen.c_str());
 +                        ps5RegisterDiscSetting();
-+                        if (stored == 0) return;
++                        if (stored == 0) {
++                            if (ps5StartSelectedDisc()) return;
++                            launchFailed = true;
++                            browser.error = "launch";
++                            chosen.clear();
++                            continueSaved = false;
++                            continue;
++                        }
 +                        unsaved = true;
++                        continueSaved = false;
 +                    }
 +                }
 +            }
 +        }
 +        SDL_Delay(16);
 +    }
++}
++} // namespace pc
++#endif
+diff --git a/native/src/pc/runtime/pc_ps5_user_storage.h b/native/src/pc/runtime/pc_ps5_user_storage.h
+new file mode 100644
+index 0000000..e41e5e9
+--- /dev/null
++++ b/native/src/pc/runtime/pc_ps5_user_storage.h
+@@ -0,0 +1,99 @@
++// Persistent PS5 user data. Legacy card files are imported once, never replaced.
++#ifndef PC_PS5_USER_STORAGE_H
++#define PC_PS5_USER_STORAGE_H
++#include <cerrno>
++#include <cstdio>
++#include <cstring>
++#include <dirent.h>
++#include <string>
++#include <sys/stat.h>
++#include <unistd.h>
++
++namespace pc {
++inline bool ps5UserDirectory(const std::string& path) {
++    if (mkdir(path.c_str(), 0777) != 0 && errno != EEXIST) return false;
++    struct stat status;
++    return stat(path.c_str(), &status) == 0 && S_ISDIR(status.st_mode);
++}
++
++inline bool ps5ImportUserFile(const std::string& from, const std::string& to) {
++    struct stat status;
++    // A persistent save takes precedence, including after an interrupted import.
++    if (stat(to.c_str(), &status) == 0) return S_ISREG(status.st_mode);
++    if (errno != ENOENT) return false;
++    FILE* input = fopen(from.c_str(), "rb");
++    if (!input) return false;
++    const std::string temporary = to + ".importing";
++    FILE* output = fopen(temporary.c_str(), "wb");
++    if (!output) { fclose(input); return false; }
++    char buffer[65536];
++    size_t count;
++    bool ok = true;
++    while ((count = fread(buffer, 1, sizeof(buffer), input)) != 0) {
++        if (fwrite(buffer, 1, count, output) != count) { ok = false; break; }
++    }
++    ok = !ferror(input) && !ferror(output) && ok;
++    if (fflush(output) != 0) ok = false;
++    if (fsync(fileno(output)) != 0) ok = false;
++    if (fclose(output) != 0) ok = false;
++    if (fclose(input) != 0) ok = false;
++    if (ok && stat(to.c_str(), &status) == 0) {
++        remove(temporary.c_str());
++        return S_ISREG(status.st_mode);
++    }
++    if (!ok || rename(temporary.c_str(), to.c_str()) != 0) {
++        remove(temporary.c_str());
++        return false;
++    }
++    return true;
++}
++
++inline bool ps5ImportCardFolder(const std::string& from, const std::string& to, unsigned depth = 0) {
++    // Card A/B contain regular GCI files; limit traversal of unexpected folders.
++    if (depth > 4) return false;
++    DIR* directory = opendir(from.c_str());
++    if (!directory) return errno == ENOENT;
++    bool ok = ps5UserDirectory(to);
++    while (ok) {
++        errno = 0;
++        const auto* entry = readdir(directory);
++        if (!entry) { ok = errno == 0; break; }
++        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
++        const std::string source = from + "/" + entry->d_name;
++        const std::string target = to + "/" + entry->d_name;
++        struct stat status;
++        if (stat(source.c_str(), &status) != 0) { ok = false; break; }
++        if (S_ISDIR(status.st_mode)) ok = ps5ImportCardFolder(source, target, depth + 1);
++        else if (S_ISREG(status.st_mode)) ok = ps5ImportUserFile(source, target);
++    }
++    closedir(directory);
++    return ok;
++}
++
++inline bool ps5PrepareUserStorage(const char* legacy = "/app0/user",
++                                  const char* persistent = "/data/windwaker/user") {
++    const std::string root(persistent);
++    const size_t slash = root.find_last_of('/');
++    if (slash == std::string::npos || !ps5UserDirectory(root.substr(0, slash)) ||
++        !ps5UserDirectory(root)) return false;
++    const std::string marker = root + "/.legacy-cards-imported";
++    if (access(marker.c_str(), F_OK) == 0) return true;
++    for (const char* region : {"EUR", "USA", "JAP"}) {
++        if (!ps5ImportCardFolder(std::string(legacy) + "/" + region, root + "/" + region)) return false;
++    }
++    // Retain controller mappings and UI placement where they already exist.
++    for (const char* name : {"controller_ports.dat", "imgui.ini"}) {
++        const std::string source = std::string(legacy) + "/" + name;
++        if (access(source.c_str(), F_OK) == 0 && !ps5ImportUserFile(source, root + "/" + name)) return false;
++    }
++    // This operational marker prevents old deleted card files being reimported later.
++    const std::string temporary = marker + ".tmp";
++    FILE* file = fopen(temporary.c_str(), "wb");
++    if (!file) return false;
++    bool ok = fputs("version=1\n", file) >= 0 && fflush(file) == 0 && fsync(fileno(file)) == 0;
++    if (fclose(file) != 0) ok = false;
++    if (!ok || rename(temporary.c_str(), marker.c_str()) != 0) { remove(temporary.c_str()); return false; }
++    return true;
 +}
 +} // namespace pc
 +#endif

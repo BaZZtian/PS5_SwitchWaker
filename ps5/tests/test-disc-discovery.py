@@ -57,6 +57,7 @@ static void writef(int, const char*, ...) {}
 #define opendir mappedOpenDir
 #define fopen mappedOpenFile
 #define access mappedAccess
+#include "disc_region.h"
 __DISC_HELPERS__
 #undef opendir
 #undef fopen
@@ -91,8 +92,13 @@ int main(int argc, char** argv) {
     image("/app0/local.iso");
     image("/mnt/usb2/Homebrew/WindWaker-Discs/matching.ISO");
     ps5FindDisc();
+    require(std::string(::getenv("COS_DISC")) == "/app0/local.iso",
+            "fresh install retains the internal default when both internal and external images exist");
+    require(ps5DiscPaths().front() == "/app0/local.iso", "chooser lists internal default before unconfigured USB images");
+    fs::rename(root + "/app0/local.iso", root + "/app0/local.hold");
+    ::unsetenv("COS_DISC"); ps5FindDisc();
     require(std::string(::getenv("COS_DISC")) == "/mnt/usb2/Homebrew/WindWaker-Discs/matching.ISO",
-            "dedicated USB2 folder wins over app0; other region and revision 1 skipped");
+            "external discovery skips other regions and revisions when no internal image is available");
     fs::create_directories(root + "/mnt/usb7/Homebrew");
     fs::rename(root + "/mnt/usb2/Homebrew/WindWaker-Discs", root + "/mnt/usb7/Homebrew/WindWaker-Discs");
     ps5FindDisc();
@@ -115,6 +121,7 @@ int main(int argc, char** argv) {
       out.seekp(8); out.put(0); }
     require(!ps5DiscMatches("/samples/absent-first-block.ciso"), "CISO without a first data block rejected");
     fs::rename(root + "/mnt/usb7/Homebrew/WindWaker-Discs", root + "/archived");
+    fs::rename(root + "/app0/local.hold", root + "/app0/local.iso");
     ::unsetenv("COS_DISC"); ps5FindDisc();
     require(std::string(::getenv("COS_DISC")) == "/app0/local.iso", "legacy app0 fallback retained");
     fs::rename(root + "/app0/local.iso", root + "/archived/local.iso");
@@ -169,7 +176,7 @@ def main():
         cpp.write_text(HARNESS.replace("__DISC_HELPERS__", helpers))
         for game_id in ("GZLE01", "GZLP01"):
             binary = directory / game_id
-            subprocess.run(shlex.split(args.cxx) + ["-std=c++17", "-Wall", "-Wextra", "-Werror",
+            subprocess.run(shlex.split(args.cxx) + ["-I", str(pathlib.Path(__file__).resolve().parents[1] / "src"), "-std=c++17", "-Wall", "-Wextra", "-Werror",
                 "-fsanitize=address,undefined", f'-DCOS_GAME_ID_STR="{game_id}"', str(cpp), "-o", str(binary)], check=True)
             subprocess.run([str(binary), str(directory / (game_id + "-fixtures"))], check=True)
 

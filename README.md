@@ -5,7 +5,7 @@
 [![licence](https://img.shields.io/badge/licence-GPL--3.0%20as%20built-blue)](LICENSING.md)
 
 A PS5 homebrew port of [SwitchWaker](https://github.com/centollOS/SwitchWaker), the
-native port of the 2002 GameCube game (USA disc `GZLE01`, revision 0) compiled
+native port of the 2002 GameCube game (USA `GZLE01` or European `GZLP01`, revision 0) compiled
 from its decompilation and drawn with [Aurora](https://github.com/encounter/aurora).
 It is laid out like [PS5_Dusklight](https://github.com/griches/PS5_Dusklight) and
 uses the same console layer: Aurora on Dawn's WebGPU on RADV, from the
@@ -14,6 +14,18 @@ uses the same console layer: Aurora on Dawn's WebGPU on RADV, from the
 The build reads no disc and holds no game data: SwitchWaker's runtime-assets
 mode compiles against stub headers and fills them from the player's own disc
 image when the title starts.
+
+## USA and European discs
+
+The default build packages both regional engines in one title. Select your own
+revision-0 USA (GZLE01) or European (GZLP01) ISO/GCM/CISO in the startup browser;
+the app starts the matching engine automatically. European builds default to
+German while preserving saved language choices. Saves and settings are kept
+outside the replaceable title folder. See [setup and storage](ps5/PAL-USB.md)
+and [building the common package](ps5/PAL.md).
+
+The automatic cross-region process handoff has host-side tests; PS5 validation
+of that handoff is pending.
 
 ## Status
 
@@ -24,6 +36,10 @@ symbols on the HUD. Played on the console as far as the forest on Outset, the
 scenes that follow it, and the boss room of Dragon Roost Cavern; nothing else
 has been seen there.
 
+The proposed v1.0.5 builds on the European support in v1.0.4 with a disc
+chooser before game startup, TV-sized text and persistent settings and saves.
+See [disc selection and storage](ps5/PAL-USB.md) and [European builds](ps5/PAL.md).
+
 **[Version 1.0.3](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.3)** fixes a crash in Dragon Roost Cavern, in the rooms with
 the hanging platforms. [Version 1.0.2](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.2) fixed a crash when the boss of Dragon
 Roost Cavern appears, and stopped the whole class of fault behind it (an
@@ -32,19 +48,20 @@ fixed a stop on a black screen at the end of the forest scene. See
 [Development](#development) for what
 they were. Copy the [new release](https://github.com/griches/PS5_SwitchWaker/releases/latest) over the old folder; saves carry on.
 
-A release is the title's folder with no game in it: the player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
-`/data/homebrew/PPSA99309/` beside `eboot.bin`, and the title finds it (the
-first one in its folder, then on a USB drive).
+A release is the title's folder with no game in it: the player copies their own matching `GZLE01` (USA) or `GZLP01` (Europe) disc image (`.iso`, `.gcm` or `.ciso`) into
+`/data/homebrew/PPSA99309/` beside `eboot.bin`, or selects another readable
+location in the startup chooser. The app folder remains the default; no USB
+drive number is required.
 
 | Area | State |
 | --- | --- |
-| Disc | Found in the title's folder; a `.iso` and a `.ciso` have both been run on the console; `.gcm` has not. A missing or wrong disc closes the title with a console notification (the close is seen working; the notification's text has not been read on a television yet) |
+| Disc | Controller-operated chooser before game startup; internal default folder or any readable mounted folder. Missing or incompatible images keep the chooser open. |
 | Picture | 16:9. The output is 3840x2160 unless the options menu's "Output resolution" says 2560x1440 or 1920x1080 (applied at the next start); the console scales it to the television. "Internal resolution" follows it ("Window size") or is fixed, which dynamic resolution needs |
 | 60 fps | Held at 3840x2160 in the scenes above, by the frame counter on screen. Not measured over a long session |
 | Shaders | A first start with no cache compiled 3,056 render pipelines in about 12 minutes. The title now ships the caches a console produced (`ps5/shader-cache`) and copies them into place when the console has none: the same start then compiles nothing. They must be taken from a console again after a change to Dawn, the driver or the shaders |
 | Button prompts | The HUD shows Cross (A), Square (B), Circle (X), Triangle (Y), R1 for Z, R2 for R and a right stick for the C stick (`ps5/art/make-glyphs.py`, [Kenney's CC0 Input Prompts](https://kenney.nl/assets/input-prompts)). The options menu's hints name the DualSense's buttons. Not done: the button pictures inside message text (they are in the game's font). With an HD texture pack the pack's buttons are drawn instead: see [Button symbols with a pack](#hd-textures-optional) |
 | Options menu | The touch pad's click opens it |
-| Saves, settings | `/data/homebrew/PPSA99309/user/`; the first start asks to create a save file, as the game does on an empty memory card |
+| Saves, settings | Saves: `/data/windwaker/user/`; settings: `/data/windwaker/settings.ini`. Existing regional cards are imported from the old app folder once, without removing the originals. |
 | HD textures | A Dolphin texture pack the player supplies replaces the game's textures (on when a pack is in `user/hd_textures`, off otherwise; see [HD textures](#hd-textures-optional)). Seen working on the console with Hypatia's pack on Outset and in its forest. The pack has an optional PlayStation button set for the HUD |
 | Sound | Not checked by ear in this log |
 | DevLoop | `devloop-shot` and `devloop-quit` in the title's folder (registered as `windwaker-gc`); the shot answers once the game's loop runs |
@@ -58,7 +75,8 @@ The symbol of an empty item slot sits in the middle of its bubble.
 
 ## Install
 
-Download `WindWaker-PS5-vX.Y.Z.zip` from the
+Choose the archive matching your disc: `WindWaker-PS5-vX.Y.Z.zip` for USA or
+`WindWaker-PS5-vX.Y.Z-eur.zip` for Europe. Download it from the
 [latest release](https://github.com/griches/PS5_SwitchWaker/releases/latest) and
 unpack it: it holds one folder, `PPSA99309`. (Or build that folder yourself, see
 [Build](#build).) It contains no game data.
@@ -94,20 +112,36 @@ unpack it: it holds one folder, `PPSA99309`. (Or build that folder yourself, see
    /data/homebrew/PPSA99309/your-disc.iso
    ```
 
-   It has to be there or on a USB drive, not elsewhere in `/data`: a title can
-   only see its own folder. The game takes the first image it finds.
+   This is the default internal folder, not a requirement to use internal
+   storage. In the startup chooser you can select an image in any readable
+   folder. Only drives actually exposed to this app are listed; no USB number
+   is preconfigured. ShadowMountPlus 1.7beta4+ with its sandbox watcher, or an
+   equivalent loader, is required for external drives and writable `/data`.
 4. Wait a few seconds for "Wind Waker" to appear on the home screen, and start
    it. The first start asks to create a save file.
 
-With no disc image, or one that is not the supported disc, the title closes and
-the console shows a notification that says why.
+On first setup, the disc chooser explains the default folder and update
+precautions. Cross opens selection; Square reopens the file/save information,
+and Up/Down change its pages. With no matching disc, selection stays open.
+A saved compatible choice starts after three seconds on subsequent launches;
+Circle cancels the countdown. L1/R1 adjust and save the text size.
 
-Saves and settings are written to `/data/homebrew/PPSA99309/user/`. Copying a new
-build over the folder leaves them, and the disc image, alone.
+The default disc folder remains `/data/homebrew/PPSA99309/`, beside `eboot.bin`
+(`/app0/` inside the app). Replacing that folder can delete an ISO kept there.
+An ISO in a separate selected folder survives title-folder replacement.
+
+Saves are in `/data/windwaker/user/` (Europe: `EUR/Card A/`); settings are in
+`/data/windwaker/settings.ini`. These paths are outside the updateable title
+folder. Back up `/data/windwaker/` before updates. When upgrading an older
+version, retain `/data/homebrew/PPSA99309/user/` until the new app has started
+and imported its regional cards. Newer persistent saves are never overwritten.
+A copy-only update is recommended; do not delete the old user folder before
+the import. HD texture packs remain in the app's `user/hd_textures/` and
+also need a backup before replacing the title folder.
 
 **The disc image.** Dump your own copy of the game
-([how](https://wiki.dolphin-emu.org/index.php?title=Ripping_Games)). Only the USA
-disc, `GZLE01` revision 0, is supported. If your dump is RVZ or another compressed
+([how](https://wiki.dolphin-emu.org/index.php?title=Ripping_Games)). An explicitly built USA-only development executable
+requires `GZLE01` revision 0; an explicitly built Europe-only executable requires `GZLP01` revision 0. If your dump is RVZ or another compressed
 format, convert it to `.iso` with [Dolphin](https://dolphin-emu.org/) first.
 
 ## HD textures (optional)

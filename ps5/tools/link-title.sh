@@ -174,9 +174,13 @@ fi
     --stub "$work/link/stubs/libSceAgcDriver.so" --module-sdk 0x02000009 \
     --companion-sdk 0x08050001 --file-name eboot.elf
 
+# Each link stages its own title; identity comes from its configured build.
+game_id=$(sed -n 's/^COS_GAME_ID:STRING=//p' "$work/CMakeCache.txt")
+multi=$(sed -n 's/^PS5_MULTI_REGION:BOOL=//p' "$work/CMakeCache.txt")
+[[ $game_id == GZLE01 || $game_id == GZLP01 ]] || { echo "missing build region" >&2; exit 2; }
 # The title folder
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$param")
-app="$root/dist/$title_id"
+app="$work/title/$title_id"
 mkdir -p "$app/sce_sys" "$app/sce_module"
 "$tool" self --sign --in "$work/eboot.elf.new" --out "$app/eboot.bin" --magic 0x1D3D154F
 "$tool" self --inspect --file "$app/eboot.bin" > /dev/null
@@ -223,4 +227,14 @@ cp "$vulkan/LICENSE" "$app/licenses/PS5_Vulkan-LICENSE.txt"
 # The title's integer division instructions, for the SIGFPE handler that finishes a division by
 # zero as the GameCube and ARM do (the console's code cannot be read at run time)
 mkdir -p "$app/res"
+python3 "$ps5/tools/make-disc-background.py" "$ps5/art/pic-source.png" "$app/res/disc-background.rgba"
 python3 "$ps5/tools/make-div-table.py" "$work/link/llvm-pie.elf" "$app/res/div-table.bin"
+
+python3 - "$app" "$game_id" "$multi" <<'PY'
+import hashlib, json, pathlib, sys
+app=pathlib.Path(sys.argv[1])
+record={"disc":sys.argv[2], "multi_region":sys.argv[3]=="ON"}
+for name in ("eboot.bin","res/div-table.bin"):
+    record[name]=hashlib.sha256((app/name).read_bytes()).hexdigest()
+(app/"BUILD.json").write_text(json.dumps(record,indent=2)+"\n")
+PY

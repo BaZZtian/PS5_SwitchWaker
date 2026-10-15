@@ -152,18 +152,18 @@ def main():
     start = runtime.index("// Select only the build's revision-0 disc")
     end = runtime.index("} // namespace", start)
     menu_start = runtime.index("void ps5RegisterDiscSetting()")
-    menu_end = runtime.index("// The console's defaults", menu_start)
+    menu_end = runtime.index("// Validate the current engine", menu_start)
     settings = (args.core / "native/src/pc/features/pc_settings.cpp").read_text()
     settings = settings.replace('#include "pc_internal.h"', '#include "test_pc_internal.h"')
     with tempfile.TemporaryDirectory(prefix="windwaker-settings-") as temporary:
         work = Path(temporary)
-        (work / "mapped.h").write_text(MAPPING)
+        (work / "mapped.h").write_text(MAPPING + '\n#include "disc_region.h"\n')
         (work / "test_pc_internal.h").write_text(INTERNAL)
         (work / "settings.cpp").write_text(settings)
         (work / "harness.cpp").write_text(HARNESS.replace("__DISC_HELPERS__", runtime[start:end])
                                            .replace("__DISC_MENU__", runtime[menu_start:menu_end]))
         binary = work / "settings-test"
-        subprocess.run(shlex.split(args.cxx) + ["-std=c++17", "-Wall", "-Wextra", "-Werror",
+        subprocess.run(shlex.split(args.cxx) + ["-I", str(Path(__file__).resolve().parents[1] / "src"), "-std=c++17", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-D__PROSPERO__", '-DCOS_GAME_ID_STR="GZLP01"',
             "-include", str(work / "mapped.h"), "-I", str(args.core / "native/include"),
             "-I", str(work), str(work / "settings.cpp"), str(work / "harness.cpp"),

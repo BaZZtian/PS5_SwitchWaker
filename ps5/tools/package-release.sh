@@ -16,7 +16,14 @@ set -euo pipefail
 version=${1:?usage: package-release.sh VERSION}
 ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
-source "$ps5/tools/game-version.sh"
+universal=false
+if [[ ${PS5_GAME_VERSION:-auto} == auto ]]; then
+    universal=true
+    cos_game_id="GZLE01 / GZLP01"
+    cos_build_suffix=
+else
+    source "$ps5/tools/game-version.sh"
+fi
 vulkan=$(cd -- "${PS5_VULKAN_DIR:-$root/../PS5_Vulkan}" && pwd)
 upstream="$root/vendor/switchwaker"
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$ps5/sce_sys/param.json")
@@ -25,6 +32,18 @@ for file in eboot.bin initial_pipeline_cache.db sce_sys/param.json sce_sys/icon0
     sce_sys/pic1.dds sce_module/libc.prx res/ps5-glyphs res/shader-cache/dawn_cache.db res/div-table.bin; do
     [[ -e $app/$file ]] || { echo "missing $app/$file: run build.sh first" >&2; exit 2; }
 done
+if $universal; then
+    python3 - "$app" <<'PY'
+import hashlib,json,pathlib,sys
+app=pathlib.Path(sys.argv[1])
+manifest=json.loads((app/"UNIVERSAL.json").read_text())
+expected={"eboot.bin","regions/eur.bin","res/div-table.bin","res/div-table-eur.bin"}
+if set(manifest["files"])!=expected: raise SystemExit("incomplete universal manifest")
+for name,sha in manifest["files"].items():
+    if hashlib.sha256((app/name).read_bytes()).hexdigest()!=sha:
+        raise SystemExit("universal package differs from linked engines: "+name)
+PY
+fi
 # the caches the title ships are under res/; a console's own, a save or a pack are not for a release
 stray=$(find "$app" \( -iname '*.iso' -o -iname '*.ciso' -o -iname '*.gcm' -o -iname '*.rvz' -o -iname '*.gci' \
     -o -path "$app/user" -o -path "$app/radv-shader-cache" -o -name hd_textures \) -print -quit)
@@ -79,17 +98,38 @@ revisions above.
 Compiler: $(${PS5_CLANG:-clang} --version | head -1)
 
 No game data is included. The Legend of Zelda: The Wind Waker belongs to
-Nintendo; this ${PS5_GAME_VERSION:-usa} build needs your own GameCube disc image
-($cos_game_id revision 0, .iso, .gcm or .ciso). Select a detected image in the
-touchpad options menu or use automatic discovery from
-/mnt/usbN/Homebrew/WindWaker-Discs/ (USB0-7). Disc-path settings are stored in
-/data/windwaker/settings.ini; see ps5/PAL-USB.md for custom locations. The
+Nintendo; this ${PS5_GAME_VERSION:-auto} build needs your own GameCube disc image
+($cos_game_id revision 0, .iso, .gcm or .ciso). Select an image in the startup
+browser or continue with the saved choice. The default internal disc folder
+is /data/homebrew/$title_id/ (/app0/ inside the app), beside eboot.bin.
+Replacing this folder can delete a disc kept there. Select a separate readable
+folder to keep the disc outside the app. No USB drive is preconfigured.
+Settings are in /data/windwaker/settings.ini; saves are in /data/windwaker/user.
+Back up /data/windwaker/ before updating. On upgrading an older build, retain
+its user/ folder until first launch imports the regional cards. HD textures
+still in the app's user/hd_textures also need a backup before replacement.
+See ps5/PAL-USB.md for custom locations. The startup backdrop uses the original
+app artwork; its lossless RGBA copy is in res/disc-background.rgba. The
 pictures in sce_sys/ are the port's own, and the files in res/ are button
 symbols from Kenney's CC0 Input Prompts and shader caches this build produced
 on a console.
 
+Regions in a common package are selected from the disc header. USA runs in
+eboot.bin; Europe runs in regions/eur.bin. Each engine uses its matching division
+table. Region-specific saves remain separate; no save conversion is performed.
 eboot.bin sha256: $(sha256sum "$app/eboot.bin" | cut -d' ' -f1)
 SOURCE
+if $universal; then
+    python3 - "$app" <<'PY'
+import hashlib,json,pathlib,sys
+app=pathlib.Path(sys.argv[1])
+path=app/"UNIVERSAL.json"
+manifest=json.loads(path.read_text())
+manifest["contents"]={str(p.relative_to(app)):hashlib.sha256(p.read_bytes()).hexdigest()
+                      for p in app.rglob("*") if p.is_file() and p!=path}
+path.write_text(json.dumps(manifest,indent=2)+"\n")
+PY
+fi
 out="$root/dist/WindWaker-PS5-v$version$cos_build_suffix.zip"
 rm -f "$out"
 (cd "$root/dist" && zip -q -r -X "$out" "$title_id" -x '*/.DS_Store')
