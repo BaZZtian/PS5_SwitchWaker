@@ -1018,7 +1018,7 @@ index c3592e4..6ce09c4 100644
 +    paths = ps5DiscPaths();
 +    choices.clear();
 +    choices.reserve(paths.size() + 1);
-+    choices.push_back({"auto", "AutomÃ¡tico", "Automatic"});
++    choices.push_back({"auto", "Automático", "Automatic"});
 +    for (const auto& path : paths) {
 +        choices.push_back({path.c_str(), path.c_str(), path.c_str()});
 +    }
@@ -1610,8 +1610,8 @@ index 0000000..dee12e1
 +    }
 +    static const PcSettingChoice sizes[] = {{"75","75%","75%"},{"100","100%","100%"},
 +                                            {"125","125%","125%"},{"150","150%","150%"}};
-+    const PcSettingDesc sizeSetting = {"COS_DISC_UI_SIZE", "TamaÃ±o del selector",
-+        "TamaÃ±o del texto del selector de disco al arrancar.", PC_SETTING_TAB_DEBUG,
++    const PcSettingDesc sizeSetting = {"COS_DISC_UI_SIZE", "Tamaño del selector",
++        "Tamaño del texto del selector de disco al arrancar.", PC_SETTING_TAB_DEBUG,
 +        PC_SETTING_RESTART, sizes, 4, "100", nullptr, nullptr, 1,
 +        "Disc browser text size", "Text size of the startup disc browser."};
 +    pc_settings_register(&sizeSetting);
@@ -1700,63 +1700,63 @@ index 0000000..dee12e1
 +                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground)) {
 +                ImGui::SetWindowFontScale(layout.text/72.f);
 +                if (showInfo) {
-+                    ImGui::TextWrapped(text("ISO und SpielstÃ¤nde Â· %u/3", "Disc images and saves Â· %u/3"), infoPage+1);
++                    ImGui::TextWrapped(text("ISO und Spielstände · %u/3", "Disc images and saves · %u/3"), infoPage+1);
 +                    ImGui::Separator();
 +                    ImGui::BeginChild("storage_help", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 3));
 +                    if (infoPage == 0) {
 +                        ImGui::TextWrapped("%s", text("Interner Standardordner:", "Default internal folder:"));
 +                        ImGui::TextWrapped("%s", "/data/homebrew/PPSA99309/");
-+                        ImGui::TextWrapped("%s", text("ISO neben eboot.bin ablegen. In der App heiÃŸt dieser Ordner /app0/.",
++                        ImGui::TextWrapped("%s", text("ISO neben eboot.bin ablegen. In der App heißt dieser Ordner /app0/.",
 +                                                      "Place the image beside eboot.bin. Inside this app the folder is /app0/."));
-+                        ImGui::TextWrapped("%s", text("Wichtig: Beim Ersetzen des App-Ordners kann die ISO gelÃ¶scht werden. Vor Updates sichern.",
++                        ImGui::TextWrapped("%s", text("Wichtig: Beim Ersetzen des App-Ordners kann die ISO gelöscht werden. Vor Updates sichern.",
 +                                                      "Replacing the app folder can delete its disc image. Back it up before updating."));
 +                    } else if (infoPage == 1) {
-+                        ImGui::TextWrapped("%s", text("Du kannst einen anderen lesbaren Ordner wÃ¤hlen. Angezeigt werden nur erreichbare Laufwerke; es ist kein USB-Pfad voreingestellt.",
++                        ImGui::TextWrapped("%s", text("Du kannst einen anderen lesbaren Ordner wählen. Angezeigt werden nur erreichbare Laufwerke; es ist kein USB-Pfad voreingestellt.",
 +                                                      "You can choose another readable folder. Only available drives are listed; no USB path is preconfigured."));
-+                        ImGui::TextWrapped("%s", text("Eine ISO auÃŸerhalb des App-Ordners bleibt bei dessen Ersetzen erhalten.",
++                        ImGui::TextWrapped("%s", text("Eine ISO außerhalb des App-Ordners bleibt bei dessen Ersetzen erhalten.",
 +                                                      "A disc outside the app folder survives replacement of that folder."));
-+                        ImGui::TextWrapped("%s: " PS5_SUPPORTED_DISC_IDS " / %s 0 Â· .iso, .gcm, .ciso", PS5_SUPPORTED_REGIONS,
++                        ImGui::TextWrapped("%s: " PS5_SUPPORTED_DISC_IDS " / %s 0 · .iso, .gcm, .ciso", PS5_SUPPORTED_REGIONS,
 +                                           text("Revision", "revision"));
 +                    } else {
-+                        ImGui::TextWrapped("%s", text("SpielstÃ¤nde: /data/windwaker/user/", "Saved games: /data/windwaker/user/"));
++                        ImGui::TextWrapped("%s", text("Spielstände: /data/windwaker/user/", "Saved games: /data/windwaker/user/"));
 +                        ImGui::TextWrapped("%s", text("Einstellungen: /data/windwaker/settings.ini", "Settings: /data/windwaker/settings.ini"));
-+                        ImGui::TextWrapped("%s", text("Beides liegt auÃŸerhalb des App-Ordners. /data/windwaker/ vor Updates sichern.",
++                        ImGui::TextWrapped("%s", text("Beides liegt außerhalb des App-Ordners. /data/windwaker/ vor Updates sichern.",
 +                                                      "Both are outside the app folder. Back up /data/windwaker/ before updates."));
-+                        ImGui::TextWrapped("%s", text("Alte SpielstÃ¤nde werden einmal importiert. Den alten user/-Ordner bis zum ersten Start behalten. Texturpakete darin separat sichern.",
++                        ImGui::TextWrapped("%s", text("Alte Spielstände werden einmal importiert. Den alten user/-Ordner bis zum ersten Start behalten. Texturpakete darin separat sichern.",
 +                                                      "Old saves are imported once. Keep the old user/ folder until first launch. Back up texture packs in it separately."));
 +                    }
 +                    ImGui::EndChild();
 +                    ImGui::TextWrapped("%s", text("Oben/unten: Hinweise   X/Kreis: ISO-Auswahl", "Up/down: information pages   X/Circle: disc selection"));
-+                    ImGui::TextWrapped(text("L1/R1: SchriftgrÃ¶ÃŸe %s%%", "L1/R1: text size %s%%"), sizes[sizeChoice].value);
++                    ImGui::TextWrapped(text("L1/R1: Schriftgröße %s%%", "L1/R1: text size %s%%"), sizes[sizeChoice].value);
 +                } else {
 +                if (continueSaved) {
-+                    ImGui::TextWrapped(text("Gespeicherte ISO Â· Start in %u s. Kreis: andere ISO.",
-+                                           "Saved image Â· starting in %u s. Circle: choose another."),
++                    ImGui::TextWrapped(text("Gespeicherte ISO · Start in %u s. Kreis: andere ISO.",
++                                           "Saved image · starting in %u s. Circle: choose another."),
 +                                       unsigned((3000-std::min<Uint64>(elapsed,3000)+999)/1000));
-+                } else ImGui::TextUnformatted(text("ISO auswÃ¤hlen","Choose a disc image"));
++                } else ImGui::TextUnformatted(text("ISO auswählen","Choose a disc image"));
 +                ImGui::TextWrapped("%s: " PS5_SUPPORTED_DISC_IDS " / %s 0", PS5_SUPPORTED_REGIONS,
 +                                   text("Revision", "revision"));
 +                ImGui::Separator();
-+                ImGui::TextWrapped("%s", text("ISO auswÃ¤hlen und mit X starten. Kreis: zurÃ¼ck.",
++                ImGui::TextWrapped("%s", text("ISO auswählen und mit X starten. Kreis: zurück.",
 +                                              "Select a disc image and press X to start. Circle: back."));
 +                if (browser.detected && browser.rows.size() == 2) {
 +                    ImGui::TextWrapped("%s", text("Keine passende ISO gefunden. Durchsuche einen Ordner oder suche erneut.",
 +                                                  "No compatible image found. Browse a folder or rescan."));
 +                }
 +                if (!browser.folder.empty()) ImGui::TextWrapped("%s", browser.folder.c_str());
-+                if (!browser.detected && browser.folder.empty()) ImGui::TextWrapped("%s", text("Wenn die HDD hier fehlt, ist sie fÃ¼r diese App nicht erreichbar. Verbinde sie erneut und suche noch einmal.",
++                if (!browser.detected && browser.folder.empty()) ImGui::TextWrapped("%s", text("Wenn die HDD hier fehlt, ist sie für diese App nicht erreichbar. Verbinde sie erneut und suche noch einmal.",
 +                                                                                              "If the HDD is missing here, this app cannot access it. Reconnect it and rescan."));
-+                if (browser.error == "directory") ImGui::TextWrapped("%s", text("Ordner nicht lesbar. Das Laufwerk muss fÃ¼r diese App eingebunden sein.",
++                if (browser.error == "directory") ImGui::TextWrapped("%s", text("Ordner nicht lesbar. Das Laufwerk muss für diese App eingebunden sein.",
 +                                                                                 "Folder is unreadable. The drive must be mounted into this app."));
-+                if (browser.error == "image") ImGui::TextWrapped("%s", text("Datei nicht lesbar oder nicht passend fÃ¼r diesen Build. Erwartet: " PS5_SUPPORTED_DISC_IDS " Revision 0.",
++                if (browser.error == "image") ImGui::TextWrapped("%s", text("Datei nicht lesbar oder nicht passend für diesen Build. Erwartet: " PS5_SUPPORTED_DISC_IDS " Revision 0.",
 +                                                                             "Image is unreadable or incompatible. Expected: " PS5_SUPPORTED_DISC_IDS " revision 0."));
-+                if (unsaved) ImGui::TextWrapped("%s", text("Auswahl gilt fÃ¼r diesen Start, konnte aber nicht gespeichert werden. X: trotzdem starten.",
++                if (unsaved) ImGui::TextWrapped("%s", text("Auswahl gilt für diesen Start, konnte aber nicht gespeichert werden. X: trotzdem starten.",
 +                                                                       "Selection applies to this session but could not be saved. X: start anyway."));
 +                if (launchFailed || browser.error == "launch") ImGui::TextWrapped("%s",
-+                    text("Passende Spielversion konnte nicht gestartet werden. Das vollstÃ¤ndige App-Paket mit beiden Regionen neu installieren.",
++                    text("Passende Spielversion konnte nicht gestartet werden. Das vollständige App-Paket mit beiden Regionen neu installieren.",
 +                         "Could not start the matching game version. Reinstall the complete app package containing both regions."));
-+                if (sizeUnsaved) ImGui::TextWrapped("%s",text("SchriftgrÃ¶ÃŸe konnte nicht gespeichert werden.","Text size could not be saved."));
-+                if (browser.truncated) ImGui::TextWrapped("%s", text("Anzeige auf 512 EintrÃ¤ge begrenzt.", "Showing at most 512 entries."));
++                if (sizeUnsaved) ImGui::TextWrapped("%s",text("Schriftgröße konnte nicht gespeichert werden.","Text size could not be saved."));
++                if (browser.truncated) ImGui::TextWrapped("%s", text("Anzeige auf 512 Einträge begrenzt.", "Showing at most 512 entries."));
 +                ImGui::BeginChild("images", ImVec2(0, -ImGui::GetTextLineHeightWithSpacing() * 3));
 +                for (size_t i = 0; i < browser.rows.size(); ++i) {
 +                    const auto& row = browser.rows[i];
@@ -1782,9 +1782,9 @@ index 0000000..dee12e1
 +                    ImGui::PopID();
 +                }
 +                ImGui::EndChild();
-+                ImGui::TextWrapped("%s", text("X: wÃ¤hlen   Kreis: zurÃ¼ck   Quadrat: ISO/Spielstand-Infos",
++                ImGui::TextWrapped("%s", text("X: wählen   Kreis: zurück   Quadrat: ISO/Spielstand-Infos",
 +                                             "X: select   Circle: back   Square: disc/save information"));
-+                ImGui::TextWrapped(text("L1/R1: SchriftgrÃ¶ÃŸe %s%%","L1/R1: text size %s%%"), sizes[sizeChoice].value);
++                ImGui::TextWrapped(text("L1/R1: Schriftgröße %s%%","L1/R1: text size %s%%"), sizes[sizeChoice].value);
 +                }
 +            }
 +            ImGui::End();
