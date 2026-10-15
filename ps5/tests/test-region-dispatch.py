@@ -107,6 +107,10 @@ int main(int argc,char** argv) {
             "mismatched or stale engine cannot create an executable restart loop");
     setenv("COS_PS5_HANDOFF",COS_GAME_ID_STR,1);pc::gConfig.disc="/roms/named something else.iso";
     require(pc::ps5ResumeSelectedDisc(),"correct engine validates and resumes without a second picker countdown");
+    pc::gConfig.disc="/roms/with spaces 'quotes'.ciso";
+    const int recoveryLoads=loads;
+    try {pc::ps5StartSelectedDisc();require(false,"recovery handoff never returns");} catch(const Dispatched&) {}
+    require(loads==recoveryLoads+1, "correctly loaded engine can switch region after recovering from a missing image");
     unsetenv("COS_PS5_HANDOFF");
     require(!pc::ps5ResumeSelectedDisc(),"ordinary starts retain the picker");
 }

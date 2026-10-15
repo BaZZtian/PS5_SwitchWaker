@@ -840,7 +840,7 @@ index 90cc87c..91c564d 100644
      const uint32_t magic = ((uint32_t)header[0x1C] << 24) | ((uint32_t)header[0x1D] << 16) |
                             ((uint32_t)header[0x1E] << 8) | (uint32_t)header[0x1F];
 diff --git a/native/src/pc/runtime/pc_harness.cpp b/native/src/pc/runtime/pc_harness.cpp
-index c3592e4..2c736e3 100644
+index c3592e4..6ce09c4 100644
 --- a/native/src/pc/runtime/pc_harness.cpp
 +++ b/native/src/pc/runtime/pc_harness.cpp
 @@ -15,6 +15,13 @@
@@ -857,7 +857,7 @@ index c3592e4..2c736e3 100644
  #if defined(__APPLE__)
  #include <mach-o/dyld.h>
  #include <pthread.h>
-@@ -128,11 +135,252 @@ bool executablePath(char* out, size_t size) {
+@@ -128,11 +135,254 @@ bool executablePath(char* out, size_t size) {
      }
      out[n] = '\0';
      return true;
@@ -1018,7 +1018,7 @@ index c3592e4..2c736e3 100644
 +    paths = ps5DiscPaths();
 +    choices.clear();
 +    choices.reserve(paths.size() + 1);
-+    choices.push_back({"auto", "Automático", "Automatic"});
++    choices.push_back({"auto", "AutomÃ¡tico", "Automatic"});
 +    for (const auto& path : paths) {
 +        choices.push_back({path.c_str(), path.c_str(), path.c_str()});
 +    }
@@ -1049,9 +1049,11 @@ index c3592e4..2c736e3 100644
 +    const auto region = ps5_disc_region(gConfig.disc);
 +    if (region == PS5_DISC_INVALID) return false;
 +    if (strcmp(ps5_disc_id(region), COS_GAME_ID_STR) != 0) {
-+        // A wrongly packaged engine must fail rather than bounce between
-+        // executables. Only the initial process may request a handoff.
-+        if (getenv("COS_PS5_HANDOFF") != nullptr) {
++        // A wrongly packaged engine must not bounce between executables.
++        // A matching engine may still recover by accepting another region
++        // if the originally selected drive/image became unavailable.
++        const char* handoff = getenv("COS_PS5_HANDOFF");
++        if (handoff && strcmp(handoff, COS_GAME_ID_STR) != 0) {
 +            writef(STDERR_FILENO, "[cos] region: handoff engine does not match the selected disc\n");
 +            return false;
 +        }
@@ -1110,7 +1112,7 @@ index c3592e4..2c736e3 100644
  } // namespace pc
  
  using namespace pc;
-@@ -145,7 +393,15 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -145,7 +395,15 @@ void pc_harness_init(int argc, char* argv[]) {
      sStartNs = monotonicNs();
      // The options menu's settings file (pc_settings.h) into the environment before anything reads
      // it (on the Switch cos_switch_start did it already, before its defaults).
@@ -1126,7 +1128,7 @@ index c3592e4..2c736e3 100644
  
      // Line-buffered stdout: the game reports with printf/OSReport into a pipe or file; a watchdog
      // or crash exit must not lose the last lines in a full buffer.
-@@ -240,12 +496,14 @@ void pc_harness_init(int argc, char* argv[]) {
+@@ -240,12 +498,14 @@ void pc_harness_init(int argc, char* argv[]) {
      // Smoke tests that run before any SDK call (static-init, the harness self-tests) end here.
      runEarlySmoke();
  
@@ -1141,7 +1143,7 @@ index c3592e4..2c736e3 100644
  }
  
  const char* pc_env_disc(void) {
-@@ -260,6 +518,10 @@ int pc_env_audio(void) {
+@@ -260,6 +520,10 @@ int pc_env_audio(void) {
      return gConfig.audio ? 1 : 0;
  }
  
@@ -1152,7 +1154,7 @@ index c3592e4..2c736e3 100644
  void pc_exit(int code) {
      int expected = 0;
      if (!sExiting.compare_exchange_strong(expected, 1)) {
-@@ -284,6 +546,13 @@ void pc_exit(int code) {
+@@ -284,6 +548,13 @@ void pc_exit(int code) {
  #if defined(__SWITCH__)
      // Writes the logs out (SD card, USB) and ends the process (switch/native/source).
      cos_switch_exit(code);
