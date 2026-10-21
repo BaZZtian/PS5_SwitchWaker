@@ -69,3 +69,9 @@ pull request, build, release, and Store/catalog submission.**
   established: **do not publish, package, merge, or submit a release**.
 - Do not bypass these rules to meet a deadline. This document is operational
   guidance only: it does not itself license, transfer, or revoke any copyright.
+
+## 4. Project-specific known rights (not a complete legal audit)
+
+- This fork includes PS5-port contributions originating from `griches/PS5_SwitchWaker`; maintaining the fork does not confer authorship of that work.
+- `centollOS/SwitchWaker` declares MIT, `zeldaret/tww` declares CC0, and Dolphin DSP HLE and the PS5 platform bring GPL obligations. Preserve `LICENSING.md` and original notices.
+- Original Nintendo game assets are excluded from these grants.
