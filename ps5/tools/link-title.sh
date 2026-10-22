@@ -212,3 +212,7 @@ cp "$upstream/native/dsp_hle/LICENSE" "$app/licenses/Dolphin-DSPHLE-LICENSE.txt"
 cp "$upstream/THIRD_PARTY.md" "$app/licenses/SwitchWaker-THIRD_PARTY.md"
 cp "$root/.deps/aurora/LICENSE" "$app/licenses/Aurora-LICENSE.txt"
 cp "$vulkan/LICENSE" "$app/licenses/PS5_Vulkan-LICENSE.txt"
+# The title's integer division instructions, for the SIGFPE handler that finishes a division by
+# zero as the GameCube and ARM do (the console's code cannot be read at run time)
+mkdir -p "$app/res"
+python3 "$ps5/tools/make-div-table.py" "$work/link/llvm-pie.elf" "$app/res/div-table.bin"
