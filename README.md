@@ -36,7 +36,7 @@ the hanging platforms. [Version 1.0.2](https://github.com/griches/PS5_SwitchWake
 Roost Cavern appears, and stopped the whole class of fault behind it (an
 integer division by zero) from ending the game anywhere else. [Version 1.0.1](https://github.com/griches/PS5_SwitchWaker/releases/tag/v1.0.1)
 fixed a stop on a black screen at the end of the forest scene. See
-[Development](#development) for what
+[Development](BUILDING.md#development) for what
 they were. Copy the [new release](https://github.com/griches/PS5_SwitchWaker/releases/latest) over the old folder; saves carry on.
 
 A release is the title's folder with no game in it: the player copies their own `GZLE01` disc image (`.iso`, `.gcm` or `.ciso`) into
